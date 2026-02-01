@@ -1,0 +1,2 @@
+../Core/Src/BMS_CAN.c:14:6:BMS_CAN_Init	16	static
+../Core/Src/BMS_CAN.c:21:9:BMS_CAN_Transmit	24	static
