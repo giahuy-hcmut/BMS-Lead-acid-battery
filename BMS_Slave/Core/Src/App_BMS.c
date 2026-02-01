@@ -40,6 +40,6 @@ void App_BMS_Process(ADC_HandleTypeDef *hadc, CAN_HandleTypeDef *hcan) {
         myBMS.lastTick = HAL_GetTick();
 
         // (Optional) Nháy LED báo hiệu
-        //HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+        HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
     }
 }

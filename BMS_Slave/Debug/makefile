@@ -60,8 +60,8 @@ all: main-build
 main-build: BMS_SLAVE.elf secondary-outputs
 
 # Tool invocations
-BMS_SLAVE.elf BMS_SLAVE.map: $(OBJS) $(USER_OBJS) D:\BOSCH_LAB_HCMUT\LVTN\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "BMS_SLAVE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\BOSCH_LAB_HCMUT\LVTN\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="BMS_SLAVE.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+BMS_SLAVE.elf BMS_SLAVE.map: $(OBJS) $(USER_OBJS) D:\BOSCH_LAB_HCMUT\LVTN\Code\BMS_Slave\STM32F103C8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "BMS_SLAVE.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m3 -T"D:\BOSCH_LAB_HCMUT\LVTN\Code\BMS_Slave\STM32F103C8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="BMS_SLAVE.map" -Wl,--gc-sections -static --specs=nano.specs -mfloat-abi=soft -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
