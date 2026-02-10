@@ -11,7 +11,7 @@
 #include "stm32f1xx_hal.h"
 
 // ID mặc định cho Node này
-#define CAN_SLAVE_ID    0x104
+#define CAN_SLAVE_ID    0x103
 
 // Khai báo hàm
 void BMS_CAN_Init(CAN_HandleTypeDef *hcan);

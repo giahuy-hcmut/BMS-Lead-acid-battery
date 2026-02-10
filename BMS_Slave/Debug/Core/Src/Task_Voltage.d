@@ -1,4 +1,5 @@
-Core/Src/App_BMS.o: ../Core/Src/App_BMS.c ../Core/Inc/App_BMS.h \
+Core/Src/Task_Voltage.o: ../Core/Src/Task_Voltage.c \
+ ../Core/Inc/Task_Voltage.h ../Core/Inc/Shared_Data.h \
  ../Core/Inc/BMS_ADC.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h \
  ../Core/Inc/stm32f1xx_hal_conf.h \
@@ -27,8 +28,9 @@ Core/Src/App_BMS.o: ../Core/Src/App_BMS.c ../Core/Inc/App_BMS.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h \
- ../Core/Inc/BMS_CAN.h
-../Core/Inc/App_BMS.h:
+ ../Core/Inc/main.h
+../Core/Inc/Task_Voltage.h:
+../Core/Inc/Shared_Data.h:
 ../Core/Inc/BMS_ADC.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:
@@ -57,4 +59,4 @@ Core/Src/App_BMS.o: ../Core/Src/App_BMS.c ../Core/Inc/App_BMS.h \
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h:
-../Core/Inc/BMS_CAN.h:
+../Core/Inc/main.h:

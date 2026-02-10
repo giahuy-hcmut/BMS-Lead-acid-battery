@@ -21,7 +21,11 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include "App_BMS.h"
+#include "Scheduler.h"
+#include "Shared_Data.h"
+#include "BMS_CAN.h"
+#include "Task_Voltage.h"
+#include "Task_CAN.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -98,20 +102,31 @@ int main(void)
   MX_CAN_Init();
   MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
-  // 1. Hiệu chuẩn ADC (Bắt buộc với F103 để triệt tiêu sai số ban đầu)
+  // 1. Calib ADC & Start CAN
     HAL_ADCEx_Calibration_Start(&hadc1);
-
-    // 2. Khởi động các driver
     HAL_CAN_Start(&hcan);
-    BMS_CAN_Init(&hcan);
-    App_BMS_Init();
+    BMS_CAN_Init(&hcan); // Cấu hình Header
+
+    // 2. KHỞI TẠO SCHEDULER
+      SCH_Init();
+
+      // 3. THÊM CÁC TASK VÀO LỊCH TRÌNH
+
+        // Task Đo Áp: Chạy ngay (delay 0), lặp 50ms/lần
+        SCH_Add_Task(Task_Voltage_Run, 0, 50);
+
+        // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
+          // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
+          uint32_t start_delay = (CAN_SLAVE_ID & 0x0F) * 100;
+          SCH_Add_Task(Task_CAN_Run, start_delay, 1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  App_BMS_Process(&hadc1, &hcan);
+	  // 4. DISPATCHER (Thay thế App_BMS_Process cũ)
+	        SCH_Dispatch();
 
     /* USER CODE END WHILE */
 
@@ -235,9 +250,9 @@ static void MX_CAN_Init(void)
   hcan.Init.TimeSeg1 = CAN_BS1_15TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
-  hcan.Init.AutoBusOff = DISABLE;
+  hcan.Init.AutoBusOff = ENABLE;
   hcan.Init.AutoWakeUp = DISABLE;
-  hcan.Init.AutoRetransmission = DISABLE;
+  hcan.Init.AutoRetransmission = ENABLE;
   hcan.Init.ReceiveFifoLocked = DISABLE;
   hcan.Init.TransmitFifoPriority = DISABLE;
   if (HAL_CAN_Init(&hcan) != HAL_OK)
