@@ -3,6 +3,7 @@
 #include "Task_CAN.h"
 #include "Task_Logic.h"
 #include "Task_Terminal.h" // <--- Include module mới
+#include "Task_LCD.h" // <--- 1. Thêm dòng này
 
 void setup() {
     Serial.begin(115200);
@@ -19,6 +20,10 @@ void setup() {
     // Task Terminal (Priority 1 - Thấp nhất)
     // Chạy ở Core 0 để không làm phiền Core 1 tính toán
     xTaskCreatePinnedToCore(Task_Terminal_Run, "Term", 2048, NULL, 1, NULL, 0);
+
+    // <--- 2. Thêm Task LCD vào đây
+    // Priority thấp (1), chạy Core 0. Stack 4096 cho an toàn.
+    xTaskCreatePinnedToCore(Task_LCD_Run, "LCD", 4096, NULL, 1, NULL, 0);
 
     Serial.println(">>> SYSTEM STARTED <<<");
 }
