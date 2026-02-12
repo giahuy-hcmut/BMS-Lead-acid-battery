@@ -1,109 +1,127 @@
 #include "Task_LCD.h"
-#include "System_Data.h"
-#include <LiquidCrystal_I2C.h>
-#include <Wire.h> 
+#include <Wire.h>
 
-// Địa chỉ I2C: 0x27 hoặc 0x3F
-LiquidCrystal_I2C lcd(0x27, 16, 2); 
+// --- IMPLEMENTATION CỦA CLASS LCD_MANAGER ---
 
-// --- HÀM CHECK I2C (Giữ nguyên để chống treo) ---
-bool Check_LCD_I2C() {
-    Wire.beginTransmission(0x27);
-    byte error = Wire.endTransmission();
-    return (error == 0);
+LCD_Manager::LCD_Manager(uint8_t addr, uint8_t cols, uint8_t rows) {
+    lcd = new LiquidCrystal_I2C(addr, cols, rows);
+    currentPage = 0;
+    refreshCounter = 0;
+    totalVolt = 0;
+    activeCount = 0;
+    // Xóa sạch dữ liệu ban đầu
+    for(int i=0; i<5; i++) {
+        localPacks[i].lastUpdate = 0;
+        localPacks[i].voltage = 0;
+        localPacks[i].isConnected = false;
+    }
 }
 
-void Task_LCD_Run(void *pvParameters) {
-    // [QUAN TRỌNG] Giảm tốc độ I2C để chống nhiễu trên dây dài
-    Wire.setClock(10000); 
-
-    lcd.init();
-    lcd.backlight();
+void LCD_Manager::init() {
+    lcd->init(); 
+    lcd->backlight();
     
-    // Intro
-    lcd.setCursor(0, 0);
-    lcd.print("BMS MASTER 5-PACK");
-    lcd.setCursor(0, 1);
-    lcd.print("System Init...");
+    // Set tốc độ I2C xuống thấp để chống nhiễu
+    Wire.setClock(10000); 
+    
+    lcd->setCursor(0, 0);
+    lcd->print("BMS MASTER V2.0");
+    lcd->setCursor(0, 1);
+    lcd->print("System Init...");
     vTaskDelay(pdMS_TO_TICKS(2000));
+}
 
-    int page_index = 0; 
-    int refresh_count = 0; 
-
-    // Tạo bộ đệm cục bộ để copy dữ liệu từ kho chung ra
-    BMS_Pack_State localPacks[5]; 
-
-    while (1) {
-        // --- 1. CƠ CHẾ TỰ SỬA LỖI (SELF-HEALING) ---
-        refresh_count++;
-        if (refresh_count > 10) {
-            if (Check_LCD_I2C()) {
-                lcd.init();      
-                lcd.backlight(); 
-            }
-            refresh_count = 0;
-        }
-
-        // --- 2. SAO CHÉP DỮ LIỆU (COPY SNAPSHOT) ---
-        // Tính toán tổng áp ngay lúc copy để tiết kiệm thời gian hiển thị
-        float total_volt = 0;
-        int active_packs = 0;
-
-        if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
-            // Dùng vòng lặp copy cả 5 Pack
-            for(int i=0; i<5; i++) {
-                localPacks[i] = globalPacks[i]; // Copy struct
-                
-                // Nếu Pack này đang kết nối, cộng dồn vào tổng
-                if (localPacks[i].isConnected) {
-                    total_volt += localPacks[i].voltage;
-                    active_packs++;
-                }
-            }
-            xSemaphoreGive(dataMutex); 
-        }
-
-        // --- 3. HIỂN THỊ (DYNAMIC) ---
-        lcd.clear(); 
-
-        if (page_index == 0) {
-            // --- TRANG TỔNG QUAN ---
-            lcd.setCursor(0, 0);
-            lcd.print("TOTAL: "); 
-            lcd.print(total_volt, 1); // 1 số lẻ
-            lcd.print("V");
+void LCD_Manager::fetchData() {
+    // Thử lấy khóa trong 100ms
+    if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
+        
+        totalVolt = 0;
+        activeCount = 0;
+        
+        for(int i=0; i<5; i++) {
+            // 1. Copy dữ liệu thô từ kho chung
+            localPacks[i] = globalPacks[i]; 
             
-            lcd.setCursor(0, 1);
-            lcd.print("Active: "); 
-            lcd.print(active_packs); 
-            lcd.print("/5 Pks"); // Ví dụ: "Active: 2/5 Pks"
-        } 
-        else {
-            // --- TRANG CHI TIẾT (1 -> 5) ---
-            // page_index = 1 -> Hiển thị Pack 0 (ID 0x103)
-            // page_index = 2 -> Hiển thị Pack 1 (ID 0x104)
-            int pack_id = page_index - 1; 
+            // 2. [QUAN TRỌNG] Tự tính trạng thái Online tại chỗ
+            // (Logic này đảm bảo LCD đồng bộ với Terminal)
+            bool isLive = (localPacks[i].lastUpdate > 0) && 
+                          (millis() - localPacks[i].lastUpdate < 3000);
+            
+            localPacks[i].isConnected = isLive;
 
-            lcd.setCursor(0, 0);
-            // In ID dạng Hex cho ngầu: P1(103), P2(104)...
-            lcd.printf("PACK %d (0x%X)", pack_id + 1, 0x103 + pack_id);
-
-            lcd.setCursor(0, 1);
-            if (localPacks[pack_id].isConnected) {
-                lcd.print("Vol: "); 
-                lcd.print(localPacks[pack_id].voltage, 2); 
-                lcd.print("V");
-            } else {
-                lcd.print("DISCONNECTED !");
+            // 3. Cộng dồn nếu Online
+            if (localPacks[i].isConnected) {
+                totalVolt += localPacks[i].voltage;
+                activeCount++;
             }
         }
+        xSemaphoreGive(dataMutex); // Trả khóa ngay lập tức
+    }
+}
 
-        // --- 4. CHUYỂN TRANG ---
-        page_index++;
-        // Tổng cộng 6 trang (0: Tổng, 1-5: Chi tiết 5 pack)
-        if (page_index > 5) page_index = 0; 
+void LCD_Manager::checkHealth() {
+    refreshCounter++;
+    // Mỗi 10 chu kỳ (khoảng 30s), kiểm tra và reset LCD nếu cần
+    if (refreshCounter > 10) {
+        Wire.beginTransmission(0x27);
+        if (Wire.endTransmission() == 0) {
+            lcd->init();      
+            lcd->backlight(); 
+        }
+        refreshCounter = 0;
+    }
+}
 
-        // Thời gian dừng mỗi trang (3 giây)
+void LCD_Manager::drawSummary() {
+    lcd->setCursor(0, 0);
+    lcd->print("TOTAL: "); lcd->print(totalVolt, 1); lcd->print("V");
+    
+    lcd->setCursor(0, 1);
+    // In dạng: "Active: 2/5 Pks"
+    lcd->print("Active: "); lcd->print(activeCount); lcd->print("/5 Pks");
+}
+
+void LCD_Manager::drawDetail(int packIndex) {
+    // Dòng 1: Tên Pack và ID Hex
+    lcd->setCursor(0, 0);
+    lcd->printf("PACK %d (0x%X)", packIndex + 1, 0x103 + packIndex);
+
+    // Dòng 2: Điện áp hoặc báo lỗi
+    lcd->setCursor(0, 1);
+    if (localPacks[packIndex].isConnected) {
+        lcd->print("Vol: "); 
+        lcd->print(localPacks[packIndex].voltage, 2); 
+        lcd->print("V");
+    } else {
+        lcd->print("DISCONNECTED !");
+    }
+}
+
+void LCD_Manager::loop() {
+    while (1) {
+        checkHealth(); // Tự sửa lỗi nhiễu
+        fetchData();   // Lấy dữ liệu mới
+        
+        lcd->clear();  // Xóa màn hình
+        
+        // Logic chuyển trang
+        if (currentPage == 0) {
+            drawSummary();
+        } else {
+            drawDetail(currentPage - 1);
+        }
+
+        currentPage++;
+        if (currentPage > 5) currentPage = 0;
+        
+        // Dừng 3 giây để người dùng đọc
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
+}
+
+// Wrapper cho FreeRTOS
+void Task_LCD_Run(void *pvParameters) {
+    LCD_Manager myDisplay(0x27, 16, 2);
+    myDisplay.init();
+    myDisplay.loop();
 }

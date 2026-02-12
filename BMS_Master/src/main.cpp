@@ -19,7 +19,7 @@ void setup() {
     // --- CORE 0: NHIỆM VỤ HIỂN THỊ (GIAO TIẾP NGƯỜI DÙNG) ---
     // Task Terminal (Priority 1 - Thấp nhất)
     // Chạy ở Core 0 để không làm phiền Core 1 tính toán
-    xTaskCreatePinnedToCore(Task_Terminal_Run, "Term", 2048, NULL, 1, NULL, 0);
+    xTaskCreatePinnedToCore(Task_Terminal_Run, "Term", 4096, NULL, 1, NULL, 0);
 
     // <--- 2. Thêm Task LCD vào đây
     // Priority thấp (1), chạy Core 0. Stack 4096 cho an toàn.
