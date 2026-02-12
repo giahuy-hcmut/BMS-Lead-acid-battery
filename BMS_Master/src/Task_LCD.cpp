@@ -1,12 +1,12 @@
 #include "Task_LCD.h"
 #include "System_Data.h"
 #include <LiquidCrystal_I2C.h>
-#include <Wire.h> // Thêm thư viện này để điều khiển I2C sâu hơn
+#include <Wire.h> 
 
-// Địa chỉ I2C thường là 0x27 hoặc 0x3F. ESP32 chân mặc định: SDA=21, SCL=22
+// Địa chỉ I2C: 0x27 hoặc 0x3F
 LiquidCrystal_I2C lcd(0x27, 16, 2); 
 
-// --- HÀM PHỤ: Kiểm tra xem LCD có còn phản hồi không ---
+// --- HÀM CHECK I2C (Giữ nguyên để chống treo) ---
 bool Check_LCD_I2C() {
     Wire.beginTransmission(0x27);
     byte error = Wire.endTransmission();
@@ -14,99 +14,96 @@ bool Check_LCD_I2C() {
 }
 
 void Task_LCD_Run(void *pvParameters) {
-    // [FIX NHIỄU]: Giảm tốc độ I2C xuống 10kHz (Mặc định là 100kHz)
-    // Giúp tín hiệu đi xa hơn và ổn định hơn trên dây nối lỏng lẻo
+    // [QUAN TRỌNG] Giảm tốc độ I2C để chống nhiễu trên dây dài
     Wire.setClock(10000); 
 
-    // 1. Khởi tạo LCD
     lcd.init();
     lcd.backlight();
     
-    // Màn hình chào mừng
+    // Intro
     lcd.setCursor(0, 0);
-    lcd.print("BMS MASTER V2.0");
+    lcd.print("BMS MASTER 5-PACK");
     lcd.setCursor(0, 1);
     lcd.print("System Init...");
     vTaskDelay(pdMS_TO_TICKS(2000));
 
-    int page_index = 0; // Biến để lật trang
-    int refresh_count = 0; // Biến đếm số lần quét để tự reset
+    int page_index = 0; 
+    int refresh_count = 0; 
+
+    // Tạo bộ đệm cục bộ để copy dữ liệu từ kho chung ra
+    BMS_Pack_State localPacks[5]; 
 
     while (1) {
-        // --- CƠ CHẾ TỰ SỬA LỖI (SELF-HEALING) ---
-        // Cứ mỗi 10 vòng lặp (khoảng 30 giây), ta khởi tạo lại LCD 1 lần.
-        // Điều này giúp xóa các ký tự lạ (garbage) nếu bị nhiễu điện.
+        // --- 1. CƠ CHẾ TỰ SỬA LỖI (SELF-HEALING) ---
         refresh_count++;
         if (refresh_count > 10) {
-            // Chỉ reset nếu LCD vẫn đang kết nối dây tốt
             if (Check_LCD_I2C()) {
-                lcd.init();      // Khởi tạo lại cấu hình
-                lcd.backlight(); // Bật lại đèn nền
+                lcd.init();      
+                lcd.backlight(); 
             }
             refresh_count = 0;
         }
 
-        // --- BƯỚC A: SAO CHÉP DỮ LIỆU AN TOÀN ---
-        // Ta tạo biến tạm để lưu dữ liệu, tránh việc giữ Mutex quá lâu khi đang vẽ LCD
-        float volt_p1 = 0, volt_p2 = 0;
-        bool conn_p1 = false, conn_p2 = false;
+        // --- 2. SAO CHÉP DỮ LIỆU (COPY SNAPSHOT) ---
+        // Tính toán tổng áp ngay lúc copy để tiết kiệm thời gian hiển thị
         float total_volt = 0;
+        int active_packs = 0;
 
         if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
-            // Copy dữ liệu từ kho chung ra biến tạm
-            volt_p1 = globalPacks[0].voltage;
-            conn_p1 = globalPacks[0].isConnected;
-            
-            volt_p2 = globalPacks[1].voltage;
-            conn_p2 = globalPacks[1].isConnected;
-            
-            // Tính tổng áp (Ví dụ đơn giản)
-            if(conn_p1) total_volt += volt_p1;
-            if(conn_p2) total_volt += volt_p2;
-
-            xSemaphoreGive(dataMutex); // Trả khóa ngay!
+            // Dùng vòng lặp copy cả 5 Pack
+            for(int i=0; i<5; i++) {
+                localPacks[i] = globalPacks[i]; // Copy struct
+                
+                // Nếu Pack này đang kết nối, cộng dồn vào tổng
+                if (localPacks[i].isConnected) {
+                    total_volt += localPacks[i].voltage;
+                    active_packs++;
+                }
+            }
+            xSemaphoreGive(dataMutex); 
         }
 
-        // --- BƯỚC B: HIỂN THỊ (Vẽ dựa trên biến tạm) ---
-        lcd.clear(); // Xóa màn hình cũ (Xóa luôn cả ký tự rác nếu có)
+        // --- 3. HIỂN THỊ (DYNAMIC) ---
+        lcd.clear(); 
 
         if (page_index == 0) {
-            // TRANG 1: TỔNG QUAN
+            // --- TRANG TỔNG QUAN ---
             lcd.setCursor(0, 0);
-            lcd.print("TOTAL: "); lcd.print(total_volt, 1); lcd.print("V");
+            lcd.print("TOTAL: "); 
+            lcd.print(total_volt, 1); // 1 số lẻ
+            lcd.print("V");
             
             lcd.setCursor(0, 1);
-            lcd.print("P1:"); lcd.print(conn_p1 ? "OK" : "LOST");
-            lcd.print(" P2:"); lcd.print(conn_p2 ? "OK" : "LOST");
+            lcd.print("Active: "); 
+            lcd.print(active_packs); 
+            lcd.print("/5 Pks"); // Ví dụ: "Active: 2/5 Pks"
         } 
-        else if (page_index == 1) {
-            // TRANG 2: CHI TIẾT PACK 1 (0x103)
+        else {
+            // --- TRANG CHI TIẾT (1 -> 5) ---
+            // page_index = 1 -> Hiển thị Pack 0 (ID 0x103)
+            // page_index = 2 -> Hiển thị Pack 1 (ID 0x104)
+            int pack_id = page_index - 1; 
+
             lcd.setCursor(0, 0);
-            lcd.print("PACK 1 (0x103)");
+            // In ID dạng Hex cho ngầu: P1(103), P2(104)...
+            lcd.printf("PACK %d (0x%X)", pack_id + 1, 0x103 + pack_id);
+
             lcd.setCursor(0, 1);
-            if (conn_p1) {
-                lcd.print("Vol: "); lcd.print(volt_p1, 2); lcd.print("V");
-            } else {
-                lcd.print("DISCONNECTED !");
-            }
-        }
-        else if (page_index == 2) {
-            // TRANG 3: CHI TIẾT PACK 2 (0x104)
-            lcd.setCursor(0, 0);
-            lcd.print("PACK 2 (0x104)");
-            lcd.setCursor(0, 1);
-            if (conn_p2) {
-                lcd.print("Vol: "); lcd.print(volt_p2, 2); lcd.print("V");
+            if (localPacks[pack_id].isConnected) {
+                lcd.print("Vol: "); 
+                lcd.print(localPacks[pack_id].voltage, 2); 
+                lcd.print("V");
             } else {
                 lcd.print("DISCONNECTED !");
             }
         }
 
-        // --- BƯỚC C: CHUYỂN TRANG ---
+        // --- 4. CHUYỂN TRANG ---
         page_index++;
-        if (page_index > 2) page_index = 0; // Quay lại trang đầu
+        // Tổng cộng 6 trang (0: Tổng, 1-5: Chi tiết 5 pack)
+        if (page_index > 5) page_index = 0; 
 
-        // Giữ màn hình trong 3 giây để người dùng kịp đọc
+        // Thời gian dừng mỗi trang (3 giây)
         vTaskDelay(pdMS_TO_TICKS(3000));
     }
 }
