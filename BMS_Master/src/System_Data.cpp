@@ -8,7 +8,8 @@ QueueHandle_t canQueue;
 // 2. Khởi tạo
 void System_Data_Init() {
     dataMutex = xSemaphoreCreateMutex();
-    canQueue = xQueueCreate(20, sizeof(BMS_Message_t));
+    // [ĐÃ THAY ĐỔI: Thay số 20 cứng bằng Macro CAN_QUEUE_LENGTH]
+    canQueue = xQueueCreate(CAN_QUEUE_LENGTH, sizeof(BMS_Message_t));
     
     // Xóa sạch dữ liệu ban đầu
     for(int i=0; i<TOTAL_PACKS; i++) {
@@ -30,17 +31,25 @@ void System_Update_Pack(uint32_t can_id, float voltage) {
     // Vào khóa -> Ghi -> Ra ngay
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
         globalPacks[idx].voltage = voltage;
-        globalPacks[idx].lastUpdate = millis(); // Cập nhật thời gian thực
+        globalPacks[idx].lastUpdate = millis();
         xSemaphoreGive(dataMutex);
     }
 }
 
-// --- HÀM ĐỌC AN TOÀN (Dành cho Task LCD/Terminal) ---
-void System_Get_Snapshot(BMS_Pack_State* buffer) {
-    // Vào khóa -> Copy -> Ra ngay
+void System_Update_Current(float current) {
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
         for(int i=0; i<TOTAL_PACKS; i++) {
-            buffer[i] = globalPacks[i]; // Copy từng phần tử sang bộ đệm riêng
+            globalPacks[i].current = current;
+        }
+        xSemaphoreGive(dataMutex);
+    }
+}
+
+// --- HÀM ĐỌC AN TOÀN (Dành cho Task Hiển thị) ---
+void System_Get_Snapshot(BMS_Pack_State *snapshotArray) {
+    if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
+        for(int i=0; i<TOTAL_PACKS; i++) {
+            snapshotArray[i] = globalPacks[i];
         }
         xSemaphoreGive(dataMutex);
     }

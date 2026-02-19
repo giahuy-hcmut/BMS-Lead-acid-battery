@@ -53,13 +53,15 @@ void Terminal_Dashboard::run() {
     while (1) {
         fetchData();
         printHeader(millis() / 1000);
-        for(int i=0; i<TOTAL_PACKS; i++) printRow(i, localPacks[i]);
+        for(int i=0; i<TOTAL_PACKS; i++) {
+            printRow(i, localPacks[i]);
+        }
         printFooter();
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
 void Task_Terminal_Run(void *pvParameters) {
-    Terminal_Dashboard myConsole;
-    myConsole.run();
+    Terminal_Dashboard dashboard;
+    dashboard.run();
 }

@@ -32,26 +32,26 @@ void LCD_Manager::fetchData() {
     // [CHUẨN CÔNG NGHIỆP] Lấy bản chụp an toàn
     System_Get_Snapshot(localPacks);
 
-    // Tính toán Online/Offline trên bản sao
     totalVolt = 0;
     activeCount = 0;
-    
-    for(int i=0; i<TOTAL_PACKS; i++) {
-        bool isLive = (localPacks[i].lastUpdate > 0) && 
-                      (millis() - localPacks[i].lastUpdate < LCD_TIMEOUT);
-        localPacks[i].isConnected = isLive;
 
-        if (isLive) {
+    for(int i=0; i<TOTAL_PACKS; i++) {
+        bool isOnline = (localPacks[i].lastUpdate > 0) && 
+                        (millis() - localPacks[i].lastUpdate < LCD_TIMEOUT);
+        localPacks[i].isConnected = isOnline;
+        
+        if (isOnline) {
             totalVolt += localPacks[i].voltage;
             activeCount++;
         }
     }
 }
 
-// (Các hàm vẽ màn hình giữ nguyên như cũ vì chỉ là logic hiển thị)
+// (Các hàm in màn hình giữ nguyên như cũ vì chỉ là logic hiển thị)
 void LCD_Manager::checkHealth() {
     refreshCounter++;
-    if (refreshCounter > 10) {
+    // [ĐÃ THAY ĐỔI: Thay số 10 gõ cứng bằng Macro LCD_I2C_RECOVERY_TICKS từ Config.h]
+    if (refreshCounter > LCD_I2C_RECOVERY_TICKS) {
         Wire.beginTransmission(LCD_ADDR);
         if (Wire.endTransmission() == 0) {
             lcd->init(); lcd->backlight(); 
@@ -81,19 +81,27 @@ void LCD_Manager::drawDetail(int packIndex) {
 
 void LCD_Manager::loop() {
     while (1) {
-        checkHealth(); 
-        fetchData();   
-        lcd->clear();  
-        if (currentPage == 0) drawSummary();
-        else drawDetail(currentPage - 1);
+        checkHealth();
+        fetchData();
+        
+        lcd->clear();
+        if (currentPage == 0) {
+            drawSummary();
+        } else {
+            drawDetail(currentPage - 1);
+        }
+
         currentPage++;
-        if (currentPage > TOTAL_PACKS) currentPage = 0; 
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        if (currentPage > TOTAL_PACKS) currentPage = 0;
+
+        vTaskDelay(pdMS_TO_TICKS(2000)); 
     }
 }
 
+// --- FREE RTOS WRAPPER ---
+// [ĐÃ THAY ĐỔI: Thêm hàm Wrapper thực tế để main.cpp có thể gọi được]
 void Task_LCD_Run(void *pvParameters) {
-    LCD_Manager myDisplay(LCD_ADDR, 16, 2);
-    myDisplay.init();
-    myDisplay.loop();
+    LCD_Manager myLCD(LCD_ADDR, LCD_COLS, LCD_ROWS);
+    myLCD.init();
+    myLCD.loop();
 }

@@ -2,11 +2,14 @@
 #include "System_Data.h"
 #include "Task_CAN.h"
 #include "Task_Logic.h"
-#include "Task_Terminal.h" // <--- Include module mới
-#include "Task_LCD.h" // <--- 1. Thêm dòng này
+#include "Task_Terminal.h" 
+#include "Task_LCD.h" 
+#include "Task_EspNow.h" // [ĐÃ THAY ĐỔI: Include Task ESP-NOW]
 
 void setup() {
     Serial.begin(115200);
+
+    Serial.printf("\n\n>>> KÍCH THƯỚC GÓI TIN: %d Bytes <<<\n\n", sizeof(BMS_Telemetry_Packet));
     System_Data_Init();
 
     // --- CORE 1: NHIỆM VỤ SỐNG CÒN (REAL-TIME) ---
@@ -22,12 +25,14 @@ void setup() {
     xTaskCreatePinnedToCore(Task_Terminal_Run, "Term", 4096, NULL, 1, NULL, 0);
 
     // <--- 2. Thêm Task LCD vào đây
-    // Priority thấp (1), chạy Core 0. Stack 4096 cho an toàn.
+    // Priority thấp (1), chạy Core 0
     xTaskCreatePinnedToCore(Task_LCD_Run, "LCD", 4096, NULL, 1, NULL, 0);
 
-    Serial.println(">>> SYSTEM STARTED <<<");
+    // [ĐÃ THAY ĐỔI: Chạy Task phát sóng ESP-NOW ở Core 0]
+    xTaskCreatePinnedToCore(Task_EspNow_Run, "EspNowTx", 4096, NULL, 2, NULL, 0);
 }
 
 void loop() {
+    // FreeRTOS quản lý các Task, hàm loop() bị vô hiệu hóa để giải phóng RAM
     vTaskDelete(NULL);
 }

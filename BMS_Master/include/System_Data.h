@@ -5,23 +5,7 @@
 #include <freertos/FreeRTOS.h>
 #include <freertos/semphr.h>
 #include <freertos/queue.h>
-
-// ==========================================
-// [1. CẤU HÌNH HỆ THỐNG - SYSTEM CONFIG]
-// ==========================================
-#define TOTAL_PACKS     5       // Số lượng Pack Pin
-#define CAN_BASE_ID     0x103   // ID bắt đầu
-#define CAN_BAUD_RATE   500000  // Tốc độ CAN
-#define LCD_ADDR        0x27    // Địa chỉ I2C
-#define LCD_TIMEOUT     3000    // Timeout báo mất kết nối (ms)
-
-// ==========================================
-// [2. SƠ ĐỒ CHÂN PHẦN CỨNG - PIN MAPPING]
-// ==========================================
-#define PIN_CAN_TX      GPIO_NUM_16
-#define PIN_CAN_RX      GPIO_NUM_17
-#define PIN_I2C_SDA     21
-#define PIN_I2C_SCL     22
+#include "Config.h" // [ĐÃ THAY ĐỔI: Kéo toàn bộ cấu hình vào đây]
 
 // ==========================================
 // [3. CẤU TRÚC DỮ LIỆU]
@@ -40,18 +24,23 @@ typedef struct {
     // float current; // Mở rộng sau này
 } BMS_Message_t;
 
+// [ĐÃ THAY ĐỔI: Đưa struct ESP-NOW vào đây, dùng Macro TOTAL_PACKS để tránh lỗi khi đổi số bình]
+typedef struct {
+    float totalVoltage;
+    float systemCurrent;
+    float packVolts[TOTAL_PACKS];
+    bool  isOnline[TOTAL_PACKS];
+} BMS_Telemetry_Packet;
+
 // Biến toàn cục (Chỉ khai báo extern, không dùng trực tiếp ở các Task)
 extern BMS_Pack_State globalPacks[TOTAL_PACKS]; 
-extern QueueHandle_t canQueue;
+extern SemaphoreHandle_t dataMutex;   
+extern QueueHandle_t canQueue;        
 
-// Hàm khởi tạo
+// API Hệ thống
 void System_Data_Init();
-
-// ==========================================
-// [4. THREAD-SAFE API (CỬA CHÍNH BẢO VỆ)]
-// ==========================================
-// Các Task sẽ gọi 2 hàm này thay vì dùng xSemaphoreTake trực tiếp
 void System_Update_Pack(uint32_t can_id, float voltage);
-void System_Get_Snapshot(BMS_Pack_State* buffer);
+void System_Update_Current(float current);
+void System_Get_Snapshot(BMS_Pack_State *snapshotArray);
 
 #endif

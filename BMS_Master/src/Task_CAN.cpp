@@ -57,7 +57,7 @@ bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
 
 // --- FREE RTOS WRAPPER ---
 void Task_CAN_Run(void *pvParameters) {
-    // Sử dụng Macro từ System_Data.h (Đã sửa đúng chân)
+    // [ĐÃ THAY ĐỔI: Sử dụng chân cấu hình từ Macro trong Config.h]
     CAN_Manager myCanBus(PIN_CAN_TX, PIN_CAN_RX, CAN_BAUD_RATE);
 
     if (!myCanBus.init()) {
@@ -71,6 +71,6 @@ void Task_CAN_Run(void *pvParameters) {
         if (myCanBus.readMessage(tempMsg)) {
             xQueueSend(canQueue, &tempMsg, 0);
         }
-        // Không delay hoặc delay cực ngắn để đảm bảo tốc độ
+        vTaskDelay(pdMS_TO_TICKS(1)); 
     }
 }
