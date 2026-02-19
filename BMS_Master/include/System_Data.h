@@ -25,7 +25,7 @@ typedef struct {
 } BMS_Message_t;
 
 // [ĐÃ THAY ĐỔI: Đưa struct ESP-NOW vào đây, dùng Macro TOTAL_PACKS để tránh lỗi khi đổi số bình]
-typedef struct {
+typedef struct __attribute__((packed)) {
     float totalVoltage;
     float systemCurrent;
     float packVolts[TOTAL_PACKS];

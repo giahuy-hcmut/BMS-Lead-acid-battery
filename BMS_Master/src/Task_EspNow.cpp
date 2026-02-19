@@ -35,26 +35,24 @@ bool EspNow_Manager::init() {
 }
 
 void EspNow_Manager::sendTelemetry() {
-    // Lấy dữ liệu mới nhất từ kho System_Data
-    // [ĐÃ THAY ĐỔI: Đổi số 5 thành TOTAL_PACKS để tránh lỗi khi thay số lượng bình]
     BMS_Pack_State snapPacks[TOTAL_PACKS];
     System_Get_Snapshot(snapPacks);
 
-    // Đóng gói
     outgoingData.totalVoltage = 0;
-    outgoingData.systemCurrent = snapPacks[0].current; // Giả sử dòng điện tổng nằm ở pack 0
+    outgoingData.systemCurrent = snapPacks[0].current; 
 
     for (int i = 0; i < TOTAL_PACKS; i++) {
-        // [ĐÃ SỬA LỖI] THÊM DÒNG NÀY ĐỂ TÍNH TRẠNG THÁI ONLINE
-        bool isOnline = (snapPacks[i].lastUpdate > 0) && (millis() - snapPacks[i].lastUpdate < LCD_TIMEOUT);
         outgoingData.packVolts[i] = snapPacks[i].voltage;
         outgoingData.isOnline[i] = snapPacks[i].isConnected;
         
-        // Chỉ cộng dồn áp tổng nếu bình đó đang Online
+        // Cộng dồn áp tổng nếu bình Online
         if (snapPacks[i].isConnected) {
             outgoingData.totalVoltage += snapPacks[i].voltage;
         }
     }
+
+    // In ra màn hình Master để kiểm chứng trước khi bắn đi
+    Serial.printf("[ESP-NOW] Packing Data... Total Volt: %.2f V\n", outgoingData.totalVoltage);
 
     // Bắn dữ liệu đi
     esp_now_send(targetMac, (uint8_t *) &outgoingData, sizeof(outgoingData));

@@ -8,7 +8,7 @@
 #include "Config.h"
 
 // 1. Cấu trúc gói tin (BẮT BUỘC PHẢI Y HỆT BÊN MASTER)
-typedef struct {
+typedef struct __attribute__((packed)) {
     float totalVoltage;
     float systemCurrent;
     float packVolts[TOTAL_PACKS];

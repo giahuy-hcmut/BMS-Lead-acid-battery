@@ -46,9 +46,16 @@ void System_Update_Current(float current) {
 }
 
 // --- HÀM ĐỌC AN TOÀN (Dành cho Task Hiển thị) ---
+// --- HÀM ĐỌC AN TOÀN (Dành cho Task Hiển thị) ---
 void System_Get_Snapshot(BMS_Pack_State *snapshotArray) {
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
-        for(int i=0; i<TOTAL_PACKS; i++) {
+        for(int i = 0; i < TOTAL_PACKS; i++) {
+            // Tự động tính trạng thái Online ngay tại lõi
+            bool isOnline = (globalPacks[i].lastUpdate > 0) && 
+                            (millis() - globalPacks[i].lastUpdate < LCD_TIMEOUT);
+            globalPacks[i].isConnected = isOnline;
+            
+            // Copy ra bản nháp cho các Task khác dùng
             snapshotArray[i] = globalPacks[i];
         }
         xSemaphoreGive(dataMutex);
