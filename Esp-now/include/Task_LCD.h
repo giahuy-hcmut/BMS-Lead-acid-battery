@@ -9,6 +9,10 @@ class LCD_Remote_Manager {
 private:
     LiquidCrystal_I2C* lcd;
     Remote_System_State localState;
+    
+    // --- THÊM 2 DÒNG NÀY ---
+    int refreshCounter;
+    void checkHealth(); 
 
     void drawDashboard();
     void drawLostConnection();

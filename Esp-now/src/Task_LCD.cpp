@@ -3,6 +3,7 @@
 
 LCD_Remote_Manager::LCD_Remote_Manager(uint8_t addr, uint8_t cols, uint8_t rows) {
     lcd = new LiquidCrystal_I2C(addr, cols, rows);
+    refreshCounter = 0;
 }
 
 void LCD_Remote_Manager::init() {
@@ -42,8 +43,24 @@ void LCD_Remote_Manager::drawLostConnection() {
     lcd->print("Check Master ESP");
 }
 
+// --- THÊM HÀM NÀY: Cơ chế tự động Reset I2C khi bị nhiễu ---
+void LCD_Remote_Manager::checkHealth() {
+    refreshCounter++;
+    // Vòng lặp chạy 200ms/lần. Đếm 10 lần (2 giây) thì rà soát lại I2C.
+    if (refreshCounter > 10) {
+        Wire.beginTransmission(LCD_ADDR);
+        if (Wire.endTransmission() == 0) {
+            // Tái khởi động lại chip điều khiển trên LCD để chống lệch pha (4-bit sync)
+            lcd->init(); 
+        }
+        refreshCounter = 0;
+    }
+}
+
 void LCD_Remote_Manager::loop() {
     while (1) {
+        checkHealth();
+        
         System_Get_Snapshot(&localState);
 
         if (localState.lastRecvTime == 0) {
