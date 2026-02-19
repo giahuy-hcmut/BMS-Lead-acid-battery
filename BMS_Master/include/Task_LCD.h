@@ -11,7 +11,7 @@ private:
     LiquidCrystal_I2C* lcd; // Con trỏ tới đối tượng LCD
     
     // Dữ liệu nội bộ (Cache)
-    BMS_Pack_State localPacks[5];
+    BMS_Pack_State localPacks[TOTAL_PACKS];
     float totalVolt;
     int activeCount;
     

@@ -5,22 +5,12 @@ void Task_Logic_Run(void *pvParameters) {
     BMS_Message_t msg;
 
     while (1) {
-        // 1. Chờ dữ liệu từ CAN (Block vô hạn)
+        // Chờ tin nhắn từ hàng đợi (Block vô hạn nếu không có tin)
         if (xQueueReceive(canQueue, &msg, portMAX_DELAY) == pdTRUE) {
             
-            // 2. Cập nhật vào kho
-            if (xSemaphoreTake(dataMutex, portMAX_DELAY) == pdTRUE) {
-                
-                int idx = msg.can_id - 0x103;
-                if (idx >= 0 && idx < 5) {
-                    globalPacks[idx].voltage = msg.voltage;
-                    
-                    // Ghi nhận thời gian cập nhật để Task_Terminal tính Timeout
-                    globalPacks[idx].lastUpdate = millis(); 
-                }
-                
-                xSemaphoreGive(dataMutex);
-            }
+            // [CHUẨN CÔNG NGHIỆP]
+            // Gọi API cập nhật an toàn, không cần lo tính toán index hay mutex
+            System_Update_Pack(msg.can_id, msg.voltage);
         }
     }
 }
