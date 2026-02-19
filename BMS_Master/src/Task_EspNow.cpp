@@ -16,7 +16,7 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
 
 // 2. Sửa hàm init() để đăng ký hàm báo cáo trên:
 bool EspNow_Manager::init() {
-    WiFi.mode(WIFI_STA);
+    WiFi.mode(WIFI_AP_STA);
 
     // --- THÊM DÒNG NÀY: Ép chạy Kênh 1 ---
     esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);

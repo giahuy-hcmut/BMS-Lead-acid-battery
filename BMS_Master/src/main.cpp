@@ -5,6 +5,7 @@
 #include "Task_Terminal.h" 
 #include "Task_LCD.h" 
 #include "Task_EspNow.h" // [ĐÃ THAY ĐỔI: Include Task ESP-NOW]
+#include "Task_WebServer.h" // <--- THÊM DÒNG NÀY
 
 void setup() {
     Serial.begin(115200);
@@ -27,6 +28,11 @@ void setup() {
     // <--- 2. Thêm Task LCD vào đây
     // Priority thấp (1), chạy Core 0
     xTaskCreatePinnedToCore(Task_LCD_Run, "LCD", 4096, NULL, 1, NULL, 0);
+
+    // <--- THÊM DÒNG NÀY (Để Stack Size là 8192 vì AsyncWeb cần nhiều RAM hơn một chút)
+    xTaskCreatePinnedToCore(Task_WebServer_Run, "WebSrv", 8192, NULL, 2, NULL, 0);
+
+       delay(500);
 
     // [ĐÃ THAY ĐỔI: Chạy Task phát sóng ESP-NOW ở Core 0]
     xTaskCreatePinnedToCore(Task_EspNow_Run, "EspNowTx", 4096, NULL, 2, NULL, 0);

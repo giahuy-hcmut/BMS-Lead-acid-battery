@@ -26,7 +26,10 @@
 // Địa chỉ MAC của Tay Cầm (B8:D6:1A:B8:9C:CC)
 #define REMOTE_MAC_ADDRESS      {0xB8, 0xD6, 0x1A, 0xB8, 0x9C, 0xCC}
 
-// --- 5. CẤU HÌNH CẢM BIẾN DÒNG (Chuẩn bị cho bước sau) ---
-#define PIN_CURRENT_SENSOR      GPIO_NUM_36 
+// --- 5. CẤU HÌNH WEB SERVER (WIFI AP) ---
+#define WIFI_AP_SSID            "MURATA_EV_BMS" // Tên WiFi phát ra
+#define WIFI_AP_PASS            "12345678"      // Mật khẩu WiFi (ít nhất 8 ký tự)
+#define WIFI_AP_CHANNEL         1               // BẮT BUỘC LÀ 1 ĐỂ KHÔNG CHẾT ESP-NOW
+#define WEB_UPDATE_INTERVAL     500             // Tốc độ làm mới Web (ms)
 
 #endif
