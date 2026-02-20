@@ -22,7 +22,7 @@ bool WebServer_Manager::init() {
     // 3. Cấu hình đường dẫn Web
     // Khi người dùng vào trang chủ "/", gửi file HTML cho họ
     server->on("/", HTTP_GET, [](AsyncWebServerRequest *request){
-        request->send_P(200, "text/html", index_html);
+        request->send(200, "text/html", index_html);
     });
 
     // Kích hoạt kênh sự kiện Real-time

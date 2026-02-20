@@ -27,5 +27,5 @@ float BMS_ADC_GetVoltage(ADC_HandleTypeDef *hadc) {
     float v_pin = (adc_avg / ADC_RESOLUTION) * ADC_VREF;
     float v_bat = v_pin * ((ADC_R1_VAL + ADC_R2_VAL) / ADC_R2_VAL);
 
-    return v_bat;
+    return v_bat * ADC_CALIBRATION_FACTOR;
 }

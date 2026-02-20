@@ -32,4 +32,9 @@
 #define WIFI_AP_CHANNEL         1               // BẮT BUỘC LÀ 1 ĐỂ KHÔNG CHẾT ESP-NOW
 #define WEB_UPDATE_INTERVAL     500             // Tốc độ làm mới Web (ms)
 
+// --- 6. CẤU HÌNH CẢM BIẾN DÒNG & SOC (ACS712-30A) ---
+#define PIN_CURRENT_SENSOR      32
+#define ACS712_SENSITIVITY      0.066   // Độ nhạy 66mV/A của bản 30A
+#define ACS712_ZERO_VOLTAGE     2.27    // Điện áp khi dòng = 0A (Có thể tinh chỉnh lại)
+#define BATTERY_CAPACITY_AH     2.0     // Dung lượng pin Testbench (2.0 Ah)
 #endif

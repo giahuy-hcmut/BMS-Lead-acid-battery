@@ -13,6 +13,19 @@
 
 #include <stdint.h>
 
+// ==========================================
+// ⚙️ CẤU HÌNH HỆ THỐNG (SYSTEM CONFIG)
+// ==========================================
+
+
+// 1. CẤU HÌNH BẢO VỆ PIN (Dành cho Li-ion 4.2V Testbench)
+#define THRESHOLD_OVER_VOLT     4.25f   // Quá áp (V)
+#define THRESHOLD_UNDER_VOLT    3.00f   // Sụt áp (V)
+#define THRESHOLD_OVER_TEMP     60.0f   // Quá nhiệt độ (C)
+
+// 2. CẤU HÌNH MẠNG LƯỚI
+#define CAN_SLAVE_ID            0x103   // Địa chỉ CAN của Node này
+
 // Định nghĩa các cờ lỗi (Bitmask)
 #define ERROR_NONE          0x00
 #define ERROR_OVER_VOLT     0x01
@@ -30,6 +43,6 @@ typedef struct {
 // Khai báo biến extern để các file khác dùng chung
 extern BMS_State_t myBMS;
 
-#endif
 
+#endif
 #endif /* INC_SHARED_DATA_H_ */
