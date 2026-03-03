@@ -14,6 +14,8 @@ struct BMS_Pack_State {
     float voltage;
     float current;
     int soc;
+    int8_t temperature;    // Bổ sung: Lưu nhiệt độ thực tế (đã trừ 40)
+    uint8_t status;        // Bổ sung: Lưu mã lỗi (0x00 là bình thường)
     uint32_t lastUpdate;
     bool isConnected;
 };
@@ -21,7 +23,8 @@ struct BMS_Pack_State {
 typedef struct {
     uint32_t can_id;
     float voltage;
-    // float current; // Mở rộng sau này
+    int8_t temperature;    // <--- THÊM DÒNG NÀY (Sửa lỗi cho Task_CAN và Task_Logic)
+    uint8_t status;        // <--- THÊM DÒNG NÀY (Sửa lỗi cho Task_CAN và Task_Logic)
 } BMS_Message_t;
 
 // [ĐÃ THAY ĐỔI: Đưa struct ESP-NOW vào đây, dùng Macro TOTAL_PACKS để tránh lỗi khi đổi số bình]
@@ -39,7 +42,8 @@ extern QueueHandle_t canQueue;
 
 // API Hệ thống
 void System_Data_Init();
-void System_Update_Pack(uint32_t can_id, float voltage);
+// Sửa lại khai báo hàm ở cuối file
+void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp, uint8_t status);
 void System_Update_Current(float current);
 void System_Get_Snapshot(BMS_Pack_State *snapshotArray);
 

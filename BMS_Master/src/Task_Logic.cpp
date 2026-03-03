@@ -13,7 +13,7 @@ void Logic_Manager::init() {
 void Logic_Manager::processMessage(BMS_Message_t &msg) {
     // [CHUẨN CÔNG NGHIỆP]
     // Gọi API cập nhật an toàn, không cần lo tính toán index hay mutex
-    System_Update_Pack(msg.can_id, msg.voltage);
+    System_Update_Pack(msg.can_id, msg.voltage, msg.temperature, msg.status);
 }
 
 // [ĐÃ THAY ĐỔI: Viết lại Wrapper FreeRTOS để sử dụng Object OOP]

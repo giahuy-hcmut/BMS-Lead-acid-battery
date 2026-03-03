@@ -22,7 +22,7 @@
 #define THRESHOLD_OVER_TEMP     60.0f   // Quá nhiệt độ (C)
 
 // 2. CẤU HÌNH MẠNG LƯỚI
-#define CAN_SLAVE_ID            0x103   // Địa chỉ CAN của Node này
+#define CAN_SLAVE_ID            0x104   // Địa chỉ CAN của Node này
 
 // Định nghĩa các cờ lỗi (Bitmask)
 #define ERROR_NONE          0x00

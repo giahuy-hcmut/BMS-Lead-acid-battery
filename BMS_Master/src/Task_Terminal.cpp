@@ -27,20 +27,25 @@ void Terminal_Dashboard::fetchData() {
 
 // (Các hàm in ấn giữ nguyên logic hiển thị)
 void Terminal_Dashboard::printHeader(uint32_t uptime) {
-    Serial.println("\n===========================================");
+    Serial.println("\n==========================================================");
     Serial.printf("   BMS MASTER DASHBOARD (Up: %lu s)\n", uptime);
-    Serial.println("===========================================");
-    Serial.println("| ID    | VOLTAGE | STATUS      | UPDATED |");
-    Serial.println("|-------|---------|-------------|---------|");
+    Serial.println("==========================================================");
+    // Thêm cột TEMP và ERR vào tiêu đề
+    Serial.println("| ID    | VOLTAGE | TEMP  | ERR  | STATUS      | UPDATED |");
+    Serial.println("|-------|---------|-------|------|-------------|---------|");
 }
 
 void Terminal_Dashboard::printRow(int index, BMS_Pack_State &pack) {
     int canID = CAN_BASE_ID + index;
     Serial.printf("| 0x%03X | ", canID);
+    
     if (pack.isConnected) {
-        Serial.printf("%6.2f V | [ONLINE] ✅ | %4lu ms |\n", pack.voltage, millis() - pack.lastUpdate);
+        // In thêm pack.temperature và pack.status
+        Serial.printf("%6.2f V | %3d C | 0x%02X | [ONLINE] ✅ | %4lu ms |\n", 
+                      pack.voltage, pack.temperature, pack.status, millis() - pack.lastUpdate);
     } else {
-        Serial.printf(" --.-- V | [LOST]   ❌ |  ----   |\n");
+        // Nếu mất kết nối thì in dấu gạch ngang
+        Serial.printf(" --.-- V |  -- C | ---- | [LOST]   ❌ |  ----   |\n");
     }
 }
 

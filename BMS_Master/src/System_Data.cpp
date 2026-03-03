@@ -22,15 +22,15 @@ void System_Data_Init() {
 }
 
 // --- HÀM GHI AN TOÀN (Dành cho Task Logic) ---
-void System_Update_Pack(uint32_t can_id, float voltage) {
+void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp, uint8_t status) {
     int idx = can_id - CAN_BASE_ID;
     
-    // Safety Check: Kiểm tra chỉ số mảng
     if (idx < 0 || idx >= TOTAL_PACKS) return;
 
-    // Vào khóa -> Ghi -> Ra ngay
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
         globalPacks[idx].voltage = voltage;
+        globalPacks[idx].temperature = temp; // Lưu nhiệt độ
+        globalPacks[idx].status = status;    // Lưu mã lỗi
         globalPacks[idx].lastUpdate = millis();
         xSemaphoreGive(dataMutex);
     }
