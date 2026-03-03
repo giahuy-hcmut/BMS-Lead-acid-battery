@@ -5,8 +5,6 @@
  *      Author: User
  */
 
-#ifndef INC_SHARED_DATA_H_
-#define INC_SHARED_DATA_H_
 
 #ifndef SHARED_DATA_H
 #define SHARED_DATA_H
@@ -44,5 +42,5 @@ typedef struct {
 extern BMS_State_t myBMS;
 
 
-#endif
-#endif /* INC_SHARED_DATA_H_ */
+
+#endif /* SHARED_DATA_H */

@@ -190,8 +190,13 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-  // THÊM DÒNG NÀY ĐỂ SCHEDULER ĐẾM GIỜ
-    SCH_Update();
+  // Tạo bộ đếm để hạ tốc độ từ 1ms xuống đúng 10ms
+    static uint8_t tick_count = 0;
+    tick_count++;
+    if (tick_count >= 10) {
+        SCH_Update();
+        tick_count = 0;
+    }
   /* USER CODE END SysTick_IRQn 1 */
 }
 
