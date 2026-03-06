@@ -39,8 +39,8 @@ String WebServer_Manager::buildJsonString() {
 
     float totalV = 0;
     float sysI = snapPacks[0].current;
+    int sysSOC = snapPacks[0].soc; 
 
-    // Tự tay xây dựng chuỗi JSON cho nhẹ, không cần thư viện ArduinoJson
     String json = "{";
     
     json += "\"packs\":[";
@@ -49,16 +49,31 @@ String WebServer_Manager::buildJsonString() {
         
         json += "{\"volt\":";
         json += String(snapPacks[i].voltage, 2);
+        
+        // --- ĐÃ SỬA: Bổ sung temp và err cho JS đọc ---
+        json += ",\"temp\":";
+        json += String(snapPacks[i].temperature);
+        json += ",\"err\":";
+        json += String(snapPacks[i].status);
+        // ----------------------------------------------
+
         json += ",\"online\":";
         json += snapPacks[i].isConnected ? "true" : "false";
         json += "}";
         
-        if (i < TOTAL_PACKS - 1) json += ","; // Thêm dấu phẩy trừ phần tử cuối
+        if (i < TOTAL_PACKS - 1) json += ","; 
     }
     json += "],";
     
     json += "\"totalV\":"; json += String(totalV, 2); json += ",";
-    json += "\"sysI\":"; json += String(sysI, 2);
+    
+    // --- ĐÃ SỬA: Thay dấu '}' thành ',' để tiếp tục nối chuỗi ---
+    json += "\"sysI\":"; json += String(sysI, 2); json += ",";
+    
+    // BỔ SUNG: % Pin tổng
+    json += "\"soc\":"; json += String(sysSOC);
+    
+    // Đóng object JSON ở dòng cuối cùng
     json += "}";
 
     return json;

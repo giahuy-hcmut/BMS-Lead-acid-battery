@@ -17,8 +17,8 @@
 
 
 // 1. CẤU HÌNH BẢO VỆ PIN (Dành cho Li-ion 4.2V Testbench)
-#define THRESHOLD_OVER_VOLT     4.25f   // Quá áp (V)
-#define THRESHOLD_UNDER_VOLT    3.00f   // Sụt áp (V)
+#define THRESHOLD_OVER_VOLT     12.7f   // Quá áp (V)
+#define THRESHOLD_UNDER_VOLT    9.00f   // Sụt áp (V)
 #define THRESHOLD_OVER_TEMP     60.0f   // Quá nhiệt độ (C)
 
 // 2. CẤU HÌNH MẠNG LƯỚI

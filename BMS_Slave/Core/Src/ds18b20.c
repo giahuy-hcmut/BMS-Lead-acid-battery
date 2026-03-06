@@ -10,13 +10,6 @@ void delay_us(uint16_t us) {
 void DS18B20_Init(void) {
     HAL_TIM_Base_Start(DS18B20_TIM); // Khởi động Timer
 
-    GPIO_InitTypeDef GPIO_InitStruct = {0};
-    GPIO_InitStruct.Pin = DS18B20_PIN;
-    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_OD; // Quan trọng: OPEN-DRAIN
-    GPIO_InitStruct.Pull = GPIO_NOPULL;
-    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
-    HAL_GPIO_Init(DS18B20_PORT, &GPIO_InitStruct);
-
     // Nhả đường dây ngay khi khởi động (Xuất mức 1)
     HAL_GPIO_WritePin(DS18B20_PORT, DS18B20_PIN, 1);
 }

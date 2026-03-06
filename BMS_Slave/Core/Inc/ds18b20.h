@@ -13,8 +13,8 @@
 // ==========================================================
 // CẤU HÌNH CHÂN GPIO TẠI ĐÂY (Cho đồ án Murata)
 // ==========================================================
-#define DS18B20_PORT GPIOA
-#define DS18B20_PIN  GPIO_PIN_1
+#define DS18B20_PORT GPIOB
+#define DS18B20_PIN  GPIO_PIN_7
 
 // Timer dùng để delay micro-giây (Đã cấu hình ở Bước 2.1)
 extern TIM_HandleTypeDef htim4;
