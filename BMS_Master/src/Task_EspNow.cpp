@@ -40,21 +40,20 @@ void EspNow_Manager::sendTelemetry() {
 
     outgoingData.totalVoltage = 0;
     outgoingData.systemCurrent = snapPacks[0].current; 
+    outgoingData.systemSOC = snapPacks[0].soc; // <--- THÊM SOC
 
     for (int i = 0; i < TOTAL_PACKS; i++) {
         outgoingData.packVolts[i] = snapPacks[i].voltage;
+        outgoingData.packTemps[i] = snapPacks[i].temperature; // <--- THÊM NHIỆT ĐỘ
+        outgoingData.packStatus[i] = snapPacks[i].status;     // <--- THÊM MÃ LỖI
         outgoingData.isOnline[i] = snapPacks[i].isConnected;
         
-        // Cộng dồn áp tổng nếu bình Online
         if (snapPacks[i].isConnected) {
             outgoingData.totalVoltage += snapPacks[i].voltage;
         }
     }
 
-    // In ra màn hình Master để kiểm chứng trước khi bắn đi
-    Serial.printf("[ESP-NOW] Packing Data... Total Volt: %.2f V\n", outgoingData.totalVoltage);
-
-    // Bắn dữ liệu đi
+    Serial.printf("[ESP-NOW] Packing Data... Total Volt: %.2f V | SOC: %d %%\n", outgoingData.totalVoltage, outgoingData.systemSOC);
     esp_now_send(targetMac, (uint8_t *) &outgoingData, sizeof(outgoingData));
 }
 

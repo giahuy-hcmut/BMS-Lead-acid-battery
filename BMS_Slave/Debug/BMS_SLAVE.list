@@ -743,8 +743,8 @@ float BMS_ADC_GetVoltage(ADC_HandleTypeDef *hadc) {
  8000810:	42c80000 	.word	0x42c80000
  8000814:	457ff000 	.word	0x457ff000
  8000818:	40533333 	.word	0x40533333
- 800081c:	40b5c087 	.word	0x40b5c087
- 8000820:	3f83d70a 	.word	0x3f83d70a
+ 800081c:	40b89d8a 	.word	0x40b89d8a
+ 8000820:	3f7d70a4 	.word	0x3f7d70a4
 
 08000824 <BMS_CAN_Init>:
 #include "BMS_CAN.h"
@@ -1561,7 +1561,7 @@ void Task_CAN_Run(void) {
     BMS_CAN_Transmit(&hcan, CAN_SLAVE_ID, txData, 8);
  8000cca:	1d3a      	adds	r2, r7, #4
  8000ccc:	2308      	movs	r3, #8
- 8000cce:	f44f 7182 	mov.w	r1, #260	@ 0x104
+ 8000cce:	f240 1103 	movw	r1, #259	@ 0x103
  8000cd2:	4809      	ldr	r0, [pc, #36]	@ (8000cf8 <Task_CAN_Run+0xb4>)
  8000cd4:	f7ff fdba 	bl	800084c <BMS_CAN_Transmit>
 
@@ -2098,7 +2098,7 @@ int main(void)
         // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
           // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
           uint32_t start_delay = (CAN_SLAVE_ID & 0x0F) * 100;
- 8001006:	f44f 73c8 	mov.w	r3, #400	@ 0x190
+ 8001006:	f44f 7396 	mov.w	r3, #300	@ 0x12c
  800100a:	607b      	str	r3, [r7, #4]
           SCH_Add_Task(Task_CAN_Run, start_delay, 1000);
  800100c:	f44f 727a 	mov.w	r2, #1000	@ 0x3e8

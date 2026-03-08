@@ -10,10 +10,11 @@ private:
     LiquidCrystal_I2C* lcd;
     Remote_System_State localState;
     
-    // --- THÊM 2 DÒNG NÀY ---
     int refreshCounter;
+    int currentPage;           // Biến lưu trang hiện tại
+    uint32_t lastPageChange;   // Thời gian đổi trang
+    
     void checkHealth(); 
-
     void drawDashboard();
     void drawLostConnection();
 

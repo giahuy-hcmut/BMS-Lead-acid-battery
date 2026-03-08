@@ -7,28 +7,36 @@ void Terminal_Remote_Dashboard::init() {
 }
 
 void Terminal_Remote_Dashboard::printDashboard() {
-    Serial.println("\n===========================================");
+    Serial.println("\n==========================================================");
     if (!localState.isConnected) {
         Serial.println("   [ ⚠️ WARNING: SIGNAL LOST ! ]");
-        Serial.println("===========================================");
+        Serial.println("==========================================================");
         return;
     }
 
-    Serial.printf("   TELEMETRY (Delay: %lu ms)\n", millis() - localState.lastRecvTime);
-    Serial.println("===========================================");
-    Serial.printf(" [⚡] TOTAL VOLT : %6.2f V\n", localState.telemetry.totalVoltage);
-    Serial.printf(" [⚡] CURRENT    : %6.2f A\n", localState.telemetry.systemCurrent);
-    Serial.println("-------------------------------------------");
+    // Header y hệt Master
+    Serial.printf(" SYSTEM VOLTAGE: %6.2f V  |  CURRENT: %6.2f A\n", localState.telemetry.totalVoltage, localState.telemetry.systemCurrent);
+    Serial.printf(" SYSTEM SOC    : %3d %%       |  LAG    : %lu ms\n", localState.telemetry.systemSOC, millis() - localState.lastRecvTime);
     
-    Serial.print(" [🔋] PACK STATUS: ");
+    Serial.println("----------------------------------------------------------");
+    Serial.println("| ID    | VOLTAGE | TEMP  | ERR  | STATUS      |         |");
+    Serial.println("|-------|---------|-------|------|-------------|---------|");
+    
+    // In chi tiết từng bình ắc quy
     for(int i=0; i<TOTAL_PACKS; i++) {
+        int canID = 0x103 + i; // ID giả lập theo CAN_BASE_ID
+        Serial.printf("| 0x%03X | ", canID);
+        
         if (localState.telemetry.isOnline[i]) {
-            Serial.printf("[%.1fV] ", localState.telemetry.packVolts[i]);
+            Serial.printf("%6.2f V | %3d C | 0x%02X | [ONLINE] ✅ |         |\n", 
+                          localState.telemetry.packVolts[i], 
+                          localState.telemetry.packTemps[i], 
+                          localState.telemetry.packStatus[i]);
         } else {
-            Serial.print("[❌] ");
+            Serial.printf(" --.-- V |  -- C | ---- | [LOST]   ❌ |         |\n");
         }
     }
-    Serial.println("\n===========================================");
+    Serial.println("==========================================================");
 }
 
 void Terminal_Remote_Dashboard::loop() {

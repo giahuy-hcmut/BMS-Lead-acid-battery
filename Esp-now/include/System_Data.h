@@ -11,7 +11,10 @@
 typedef struct __attribute__((packed)) {
     float totalVoltage;
     float systemCurrent;
+    int   systemSOC;                       // THÊM MỚI: % Pin tổng
     float packVolts[TOTAL_PACKS];
+    int8_t packTemps[TOTAL_PACKS];         // THÊM MỚI: Nhiệt độ từng bình
+    uint8_t packStatus[TOTAL_PACKS];       // THÊM MỚI: Mã lỗi từng bình
     bool  isOnline[TOTAL_PACKS];
 } BMS_Telemetry_Packet;
 

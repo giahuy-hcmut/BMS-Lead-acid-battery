@@ -29,11 +29,14 @@ typedef struct {
 
 // [ĐÃ THAY ĐỔI: Đưa struct ESP-NOW vào đây, dùng Macro TOTAL_PACKS để tránh lỗi khi đổi số bình]
 typedef struct __attribute__((packed)) {
-    float totalVoltage;
-    float systemCurrent;
-    float packVolts[TOTAL_PACKS];
-    bool  isOnline[TOTAL_PACKS];
-} BMS_Telemetry_Packet;
+    float totalVoltage;     // 4 bytes
+    float systemCurrent;    // 4 bytes
+    int   systemSOC;        // 4 bytes
+    float packVolts[5];     // 20 bytes (5 packs)
+    int8_t packTemps[5];    // 5 bytes
+    uint8_t packStatus[5];  // 5 bytes
+    bool  isOnline[5];      // 5 bytes
+} BMS_Telemetry_Packet;     // Tổng cộng: 47 bytes
 
 // Biến toàn cục (Chỉ khai báo extern, không dùng trực tiếp ở các Task)
 extern BMS_Pack_State globalPacks[TOTAL_PACKS]; 

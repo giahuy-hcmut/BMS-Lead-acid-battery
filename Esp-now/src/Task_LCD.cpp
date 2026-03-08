@@ -4,6 +4,8 @@
 LCD_Remote_Manager::LCD_Remote_Manager(uint8_t addr, uint8_t cols, uint8_t rows) {
     lcd = new LiquidCrystal_I2C(addr, cols, rows);
     refreshCounter = 0;
+    currentPage = 0;
+    lastPageChange = 0;
 }
 
 void LCD_Remote_Manager::init() {
@@ -18,22 +20,54 @@ void LCD_Remote_Manager::init() {
 }
 
 void LCD_Remote_Manager::drawDashboard() {
-    // Dòng 1: In Tổng Áp và Dòng Điện
-    lcd->setCursor(0, 0);
-    lcd->print("V:");
-    lcd->print(localState.telemetry.totalVoltage, 1);
-    lcd->print(" I:");
-    lcd->print(localState.telemetry.systemCurrent, 1);
-    lcd->print("A   "); // Dấu cách thừa để xóa chữ cũ
+    char buf[17]; // Bộ đệm chuỗi 16 ký tự
 
-    // Dòng 2: Trạng thái 5 bình
-    lcd->setCursor(0, 1);
-    lcd->print("Packs: [");
-    for (int i = 0; i < TOTAL_PACKS; i++) {
-        if (localState.telemetry.isOnline[i]) lcd->print("O");
-        else lcd->print("X");
+    // Logic lật trang mỗi 2 giây
+    if (millis() - lastPageChange > 2000) {
+        currentPage++;
+        if (currentPage > TOTAL_PACKS) currentPage = 0; // Trang 0 là Tổng quan, Trang 1->5 là chi tiết từng bình
+        lastPageChange = millis();
+        lcd->clear(); // Xóa màn hình khi đổi trang
     }
-    lcd->print("]   ");
+
+    if (currentPage == 0) {
+        // --- TRANG TỔNG QUAN (V, A, SOC, Online Status) ---
+        // Dòng 1: "60.0V 12.5A 100%"
+        sprintf(buf, "%4.1fV %4.1fA %3d%%", localState.telemetry.totalVoltage, localState.telemetry.systemCurrent, localState.telemetry.systemSOC);
+        lcd->setCursor(0, 0);
+        lcd->print(buf);
+
+        // Dòng 2: "Packs: [OOOOX]"
+        lcd->setCursor(0, 1);
+        lcd->print("Packs: [");
+        for (int i = 0; i < TOTAL_PACKS; i++) {
+            lcd->print(localState.telemetry.isOnline[i] ? "O" : "X");
+        }
+        lcd->print("]");
+    } 
+    else {
+        // --- TRANG CHI TIẾT TỪNG BÌNH ---
+        int pIdx = currentPage - 1; // Chỉ số mảng (0 -> 4)
+        
+        lcd->setCursor(0, 0);
+        sprintf(buf, "PACK %d: ", pIdx + 1);
+        lcd->print(buf);
+        
+        if (localState.telemetry.isOnline[pIdx]) {
+            // Dòng 1 tiếp tục: "12.0V"
+            sprintf(buf, "%4.1fV", localState.telemetry.packVolts[pIdx]);
+            lcd->print(buf);
+            
+            // Dòng 2: "T:35C ERR:0x00"
+            lcd->setCursor(0, 1);
+            sprintf(buf, "T:%2dC  ERR:0x%02X", localState.telemetry.packTemps[pIdx], localState.telemetry.packStatus[pIdx]);
+            lcd->print(buf);
+        } else {
+            lcd->print("LOST!");
+            lcd->setCursor(0, 1);
+            lcd->print("Check Connect..");
+        }
+    }
 }
 
 void LCD_Remote_Manager::drawLostConnection() {

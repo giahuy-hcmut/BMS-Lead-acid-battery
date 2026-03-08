@@ -44,3 +44,14 @@
 #define VOLTAGE_SYS_100_SOC     12.6f        //64.0f   // Điện áp khi bình đầy 100% (Khoảng 12.8V/bình x 5)
 #define VOLTAGE_SYS_0_SOC       9.0f        //57.5f   // Điện áp khi bình cạn 0% (Khoảng 11.5V/bình x 5)
 #endif
+
+// --- 8. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
+#define PIN_RELAY_CONTROL       26      // Chân xuất tín hiệu điều khiển Relay tổng
+// Lưu ý: Đa số Module Relay cách ly quang (Opto) kích ở mức THẤP (LOW). 
+// Nếu module của bạn kích mức CAO, hãy đảo ngược lại định nghĩa này.
+#define RELAY_ON                HIGH    
+#define RELAY_OFF               LOW     
+
+#define MAX_DISCHARGE_CURRENT   50.0f   // Ngưỡng quá dòng (A) - Chỉnh theo công suất Motor
+#define MIN_SOC_SHUTDOWN        5       // Mức % SOC thấp nhất cho phép chạy (Bảo vệ cạn bình)
+#define RECOVERY_SOC            10      // Mức % SOC an toàn để tự động đóng Relay trở lại (Hysteresis)
