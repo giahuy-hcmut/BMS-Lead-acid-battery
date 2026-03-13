@@ -27,25 +27,25 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   ALLOC
  11 .ARM.attributes 00000029  00000000  00000000  00006010  2**0
                   CONTENTS, READONLY
- 12 .debug_info   0000de95  00000000  00000000  00006039  2**0
+ 12 .debug_info   0000de91  00000000  00000000  00006039  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 13 .debug_abbrev 00002a85  00000000  00000000  00013ece  2**0
+ 13 .debug_abbrev 00002a83  00000000  00000000  00013eca  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 14 .debug_aranges 00000d98  00000000  00000000  00016958  2**3
+ 14 .debug_aranges 00000d98  00000000  00000000  00016950  2**3
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 15 .debug_rnglists 00000a55  00000000  00000000  000176f0  2**0
+ 15 .debug_rnglists 00000a55  00000000  00000000  000176e8  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_macro  0001875a  00000000  00000000  00018145  2**0
+ 16 .debug_macro  00018767  00000000  00000000  0001813d  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   000111b9  00000000  00000000  0003089f  2**0
+ 17 .debug_line   000111ca  00000000  00000000  000308a4  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008c395  00000000  00000000  00041a58  2**0
+ 18 .debug_str    0008c395  00000000  00000000  00041a6e  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000cdded  2**0
+ 19 .comment      00000043  00000000  00000000  000cde03  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  00003788  00000000  00000000  000cde30  2**2
+ 20 .debug_frame  00003788  00000000  00000000  000cde48  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 00000046  00000000  00000000  000d15b8  2**0
+ 21 .debug_line_str 00000046  00000000  00000000  000d15d0  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -3330,7 +3330,7 @@ void SysTick_Handler(void)
  8001682:	b2da      	uxtb	r2, r3
  8001684:	4b06      	ldr	r3, [pc, #24]	@ (80016a0 <SysTick_Handler+0x2c>)
  8001686:	701a      	strb	r2, [r3, #0]
-    if (tick_count >= 10) {
+    if (tick_count >= SCH_TICK_MS) {
  8001688:	4b05      	ldr	r3, [pc, #20]	@ (80016a0 <SysTick_Handler+0x2c>)
  800168a:	781b      	ldrb	r3, [r3, #0]
  800168c:	2b09      	cmp	r3, #9

@@ -193,7 +193,7 @@ void SysTick_Handler(void)
   // Tạo bộ đếm để hạ tốc độ từ 1ms xuống đúng 10ms
     static uint8_t tick_count = 0;
     tick_count++;
-    if (tick_count >= 10) {
+    if (tick_count >= SCH_TICK_MS) {
         SCH_Update();
         tick_count = 0;
     }

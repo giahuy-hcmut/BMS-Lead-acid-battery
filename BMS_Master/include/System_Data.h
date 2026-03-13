@@ -10,6 +10,7 @@
 // ==========================================
 // [3. CẤU TRÚC DỮ LIỆU]
 // ==========================================
+//Cấu trúc lưu trữ chính
 struct BMS_Pack_State {
     float voltage;
     float current;
@@ -20,6 +21,7 @@ struct BMS_Pack_State {
     bool isConnected;
 };
 
+//Dùng cho task_CAN thu thập dữ liệu
 typedef struct {
     uint32_t can_id;
     float voltage;
@@ -32,10 +34,10 @@ typedef struct __attribute__((packed)) {
     float totalVoltage;     // 4 bytes
     float systemCurrent;    // 4 bytes
     int   systemSOC;        // 4 bytes
-    float packVolts[5];     // 20 bytes (5 packs)
-    int8_t packTemps[5];    // 5 bytes
-    uint8_t packStatus[5];  // 5 bytes
-    bool  isOnline[5];      // 5 bytes
+    float packVolts[TOTAL_PACKS];     // 20 bytes (5 packs)
+    int8_t packTemps[TOTAL_PACKS];    // 5 bytes
+    uint8_t packStatus[TOTAL_PACKS];  // 5 bytes
+    bool  isOnline[TOTAL_PACKS];      // 5 bytes
 } BMS_Telemetry_Packet;     // Tổng cộng: 47 bytes
 
 // Biến toàn cục (Chỉ khai báo extern, không dùng trực tiếp ở các Task)
