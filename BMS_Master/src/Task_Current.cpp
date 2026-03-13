@@ -18,7 +18,7 @@ CurrentSensor_Manager::CurrentSensor_Manager(int adcPin, float sens, float zeroV
 void CurrentSensor_Manager::init() {
     analogReadResolution(12); // ESP32 ADC 12-bit (0-4095)
     pinMode(pin, INPUT);
-    Serial.println("[CURRENT] ACS712 Sensor & Coulomb Counter Initialized");
+    Serial.println("[CURRENT] ACS758 Sensor & Coulomb Counter Initialized");
     lastCalcTime = millis();
 }
 
@@ -44,15 +44,16 @@ void CurrentSensor_Manager::loop() {
     }
 
     // Nội suy tuyến tính % pin từ điện áp (Tránh Magic Numbers)
-    if (totalStartVolt >= VOLTAGE_SYS_100_SOC) {
+    // Nội suy tuyến tính % pin từ điện áp tổng (Tự động scale theo số lượng bình)
+    if (totalStartVolt >= VOLTAGE_SYS_100_SOC * TOTAL_PACKS) {
         currentSOC = 100.0;
     } 
-    else if (totalStartVolt <= VOLTAGE_SYS_0_SOC) {
+    else if (totalStartVolt <= VOLTAGE_SYS_0_SOC * TOTAL_PACKS) {
         currentSOC = 0.0;
     } 
     else {
-        // Công thức: SOC = ((V_hiện_tại - V_Min) / (V_Max - V_Min)) * 100
-        currentSOC = ((totalStartVolt - VOLTAGE_SYS_0_SOC) / (VOLTAGE_SYS_100_SOC - VOLTAGE_SYS_0_SOC)) * 100.0;
+        currentSOC = ((totalStartVolt - (VOLTAGE_SYS_0_SOC * TOTAL_PACKS)) / 
+                     ((VOLTAGE_SYS_100_SOC * TOTAL_PACKS) - (VOLTAGE_SYS_0_SOC * TOTAL_PACKS))) * 100.0;
     }
 
     // Đồng bộ lại lượng Ah đã dùng tương ứng với % SOC vừa nội suy

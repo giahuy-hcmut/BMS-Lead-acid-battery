@@ -24,6 +24,7 @@
 
 // --- 4. CẤU HÌNH ESP-NOW ---
 // Địa chỉ MAC của Tay Cầm (B8:D6:1A:B8:9C:CC)
+// Địa chỉ 192.168.4.1
 #define REMOTE_MAC_ADDRESS      {0xB8, 0xD6, 0x1A, 0xB8, 0x9C, 0xCC}
 
 // --- 5. CẤU HÌNH WEB SERVER (WIFI AP) ---
@@ -37,12 +38,12 @@
 #define ACS758_SENSITIVITY      0.0264  // Độ nhạy 26.4mV/A khi cấp nguồn 3.3V
 #define ACS758_ZERO_VOLTAGE     1.524    // Điện áp khi dòng = 0A (3.3V / 2)
 #define ACS758_ZERO_CURRENT     0.5     //  Dòng điện để calib khử từ trường
-#define BATTERY_CAPACITY_AH     2.0     // Dung lượng pin Testbench (2.0 Ah)
+#define BATTERY_CAPACITY_AH     20.0     // Dung lượng pin Testbench (20.0 Ah)
 
 // --- 7. CẤU HÌNH NGƯỠNG ĐIỆN ÁP & SOC (Hệ 60V Chì-Axit) ---
-#define VOLTAGE_SYS_MIN_VALID   5.0f        //10.0f   // Điện áp tối thiểu để xác nhận CAN đã gửi dữ liệu
-#define VOLTAGE_SYS_100_SOC     12.6f        //64.0f   // Điện áp khi bình đầy 100% (Khoảng 12.8V/bình x 5)
-#define VOLTAGE_SYS_0_SOC       9.0f        //57.5f   // Điện áp khi bình cạn 0% (Khoảng 11.5V/bình x 5)
+#define VOLTAGE_SYS_MIN_VALID   5.0f     // Điện áp tối thiểu để xác nhận CAN đã gửi dữ liệu
+#define VOLTAGE_SYS_100_SOC     12.6f    // Điện áp khi bình đầy 100% (Khoảng 12.8V/bình)
+#define VOLTAGE_SYS_0_SOC       11.5f     // Điện áp khi bình cạn 0% (Khoảng 11.5V/bình)
 #endif
 
 // --- 8. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
