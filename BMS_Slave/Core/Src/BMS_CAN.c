@@ -8,6 +8,7 @@
 
 #include "BMS_CAN.h"
 
+
 static CAN_TxHeaderTypeDef TxHeader;
 static uint32_t TxMailbox;
 
