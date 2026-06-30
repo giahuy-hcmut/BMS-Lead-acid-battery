@@ -1,2 +1,4 @@
-../Core/Src/BMS_CAN.c:14:6:BMS_CAN_Init	16	static
-../Core/Src/BMS_CAN.c:21:9:BMS_CAN_Transmit	24	static
+../Core/Src/BMS_CAN.c:16:6:BMS_CAN_Init	16	static
+../Core/Src/BMS_CAN.c:23:6:BMS_CAN_InitRx	56	static
+../Core/Src/BMS_CAN.c:38:6:HAL_CAN_RxFifo0MsgPendingCallback	56	static
+../Core/Src/BMS_CAN.c:47:9:BMS_CAN_Transmit	24	static

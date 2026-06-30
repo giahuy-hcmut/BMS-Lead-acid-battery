@@ -40,6 +40,7 @@ typedef struct {
 
 // Khai báo biến extern để các file khác dùng chung
 extern BMS_State_t myBMS;
+extern volatile uint32_t lastHeartbeatTick;
 
 
 

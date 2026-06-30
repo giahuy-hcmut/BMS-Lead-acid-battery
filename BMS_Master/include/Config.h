@@ -12,6 +12,9 @@
 #define PIN_CAN_RX              GPIO_NUM_17
 #define CAN_BAUD_RATE           500000
 #define CAN_QUEUE_LENGTH        20      // Chiều dài bộ đệm tin nhắn CAN
+#define CAN_HEARTBEAT_ID        0x100   // ID frame heartbeat gửi xuống slave
+#define CAN_HEARTBEAT_INTERVAL  1000    // Chu kỳ gửi heartbeat (ms)
+#define CAN_TX_TIMEOUT_MS       10      // Timeout gửi/nhận CAN frame (ms)
 
 // --- 3. CẤU HÌNH MÀN HÌNH LCD ---
 #define PIN_I2C_SDA             21

@@ -32,12 +32,36 @@ bool CAN_Manager::init() {
     return false;
 }
 
+void CAN_Manager::sendHeartbeat() {
+    if (!isReady) return;
+
+    twai_status_info_t status;
+    twai_get_status_info(&status);
+
+    if (status.state == TWAI_STATE_BUS_OFF) {
+        twai_initiate_recovery();
+        return;
+    }
+    if (status.state == TWAI_STATE_STOPPED) {
+        twai_start();
+        return;
+    }
+    if (status.state == TWAI_STATE_RECOVERING) {
+        return;
+    }
+
+    twai_message_t msg = {};
+    msg.identifier = CAN_HEARTBEAT_ID;
+    msg.data_length_code = 0;
+    twai_transmit(&msg, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS));
+}
+
 bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
     if (!isReady) return false;
 
     twai_message_t rx_msg;
     // Chờ tối đa 10ms
-    if (twai_receive(&rx_msg, pdMS_TO_TICKS(10)) == ESP_OK) {
+    if (twai_receive(&rx_msg, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS)) == ESP_OK) {
         
         msgOut.can_id = rx_msg.identifier;
         
@@ -75,11 +99,16 @@ void Task_CAN_Run(void *pvParameters) {
     }
 
     BMS_Message_t tempMsg;
+    TickType_t lastHeartbeat = xTaskGetTickCount();
 
     while (1) {
         if (myCanBus.readMessage(tempMsg)) {
             xQueueSend(canQueue, &tempMsg, 0);
         }
-        vTaskDelay(pdMS_TO_TICKS(1)); 
+        if ((xTaskGetTickCount() - lastHeartbeat) >= pdMS_TO_TICKS(CAN_HEARTBEAT_INTERVAL)) {
+            myCanBus.sendHeartbeat();
+            lastHeartbeat = xTaskGetTickCount();
+        }
+        vTaskDelay(pdMS_TO_TICKS(1));
     }
 }

@@ -10,3 +10,4 @@
 
 // Khởi tạo biến thực sự tại đây
 BMS_State_t myBMS = {0};
+volatile uint32_t lastHeartbeatTick = 0;

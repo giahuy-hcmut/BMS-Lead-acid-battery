@@ -27,6 +27,7 @@
 #include "Task_Voltage.h"
 #include "Task_CAN.h"
 #include "Task_Temperature.h"
+#include "Task_Sleep.h"
 #include "ds18b20.h"
 /* USER CODE END Includes */
 
@@ -110,7 +111,8 @@ int main(void)
   // 1. Calib ADC & Start CAN
     HAL_ADCEx_Calibration_Start(&hadc1);
     HAL_CAN_Start(&hcan);
-    BMS_CAN_Init(&hcan); // Cấu hình Header
+    BMS_CAN_Init(&hcan);
+    BMS_CAN_InitRx(&hcan);
 
     // 2. KHỞI TẠO SCHEDULER
       SCH_Init();
@@ -129,6 +131,7 @@ int main(void)
 
           // 2. Thêm Task Nhiệt độ (Chạy lặp mỗi 1000ms, khởi động chệch đi 10ms để né Task Áp)
           SCH_Add_Task(Task_Temperature_Run, 10, 1000);
+          SCH_Add_Task(Task_Sleep_Run, 0, 1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -259,7 +262,7 @@ static void MX_CAN_Init(void)
   hcan.Init.TimeSeg1 = CAN_BS1_15TQ;
   hcan.Init.TimeSeg2 = CAN_BS2_2TQ;
   hcan.Init.TimeTriggeredMode = DISABLE;
-  hcan.Init.AutoBusOff = DISABLE;
+  hcan.Init.AutoBusOff = ENABLE;
   hcan.Init.AutoWakeUp = DISABLE;
   hcan.Init.AutoRetransmission = DISABLE;
   hcan.Init.ReceiveFifoLocked = DISABLE;

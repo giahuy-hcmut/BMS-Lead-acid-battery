@@ -3,6 +3,7 @@
 "./Core/Src/Scheduler.o"
 "./Core/Src/Shared_Data.o"
 "./Core/Src/Task_CAN.o"
+"./Core/Src/Task_Sleep.o"
 "./Core/Src/Task_Temperature.o"
 "./Core/Src/Task_Voltage.o"
 "./Core/Src/ds18b20.o"

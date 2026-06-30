@@ -23,6 +23,7 @@ public:
     // Hàm đọc tin nhắn (Non-blocking)
     // Trả về true nếu có tin, false nếu không
     bool readMessage(BMS_Message_t &msgOut);
+    void sendHeartbeat();
 };
 
 // Hàm Wrapper cho FreeRTOS gọi

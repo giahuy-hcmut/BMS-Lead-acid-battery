@@ -13,6 +13,7 @@
 
 // Khai báo hàm
 void BMS_CAN_Init(CAN_HandleTypeDef *hcan);
+void BMS_CAN_InitRx(CAN_HandleTypeDef *hcan);
 uint8_t BMS_CAN_Transmit(CAN_HandleTypeDef *hcan, uint32_t id, uint8_t *data, uint8_t len);
 
 #endif /* INC_BMS_CAN_H_ */
