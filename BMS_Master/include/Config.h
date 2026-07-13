@@ -4,7 +4,7 @@
 #include <Arduino.h>
 
 // --- 1. CẤU HÌNH HỆ THỐNG PIN ---
-#define TOTAL_PACKS             2       // Số lượng bình ắc quy (Sửa số này nếu nâng cấp xe)
+#define TOTAL_PACKS             5       // Số lượng bình ắc quy (Sửa số này nếu nâng cấp xe)
 #define CAN_BASE_ID             0x103   // ID bắt đầu của Pack 1
 
 // --- 2. CẤU HÌNH CAN BUS ---
@@ -39,7 +39,7 @@
 // --- 6. CẤU HÌNH CẢM BIẾN DÒNG & SOC (ACS712-30A) ---
 #define PIN_CURRENT_SENSOR      32
 #define ACS758_SENSITIVITY      0.0264  // Độ nhạy 26.4mV/A khi cấp nguồn 3.3V
-#define ACS758_ZERO_VOLTAGE     1.524    // Điện áp khi dòng = 0A (3.3V / 2)
+#define ACS758_ZERO_VOLTAGE     0//1.524    // Điện áp khi dòng = 0A (3.3V / 2)
 #define ACS758_ZERO_CURRENT     0.5     //  Dòng điện để calib khử từ trường
 #define BATTERY_CAPACITY_AH     20.0     // Dung lượng pin Testbench (20.0 Ah)
 

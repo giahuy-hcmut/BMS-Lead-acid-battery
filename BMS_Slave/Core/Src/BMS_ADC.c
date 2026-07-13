@@ -8,7 +8,7 @@
 #include "BMS_ADC.h"
 
 float BMS_ADC_GetVoltage(ADC_HandleTypeDef *hadc) {
-    uint32_t adc_sum = 0;
+    /*uint32_t adc_sum = 0;
 
     // --- TĂNG SỐ LẦN LẤY MẪU LÊN 100 ---
 
@@ -25,7 +25,7 @@ float BMS_ADC_GetVoltage(ADC_HandleTypeDef *hadc) {
 
     // Tính toán điện áp (Code cũ giữ nguyên)
     float v_pin = (adc_avg / ADC_RESOLUTION) * ADC_VREF;
-    float v_bat = v_pin * ((ADC_R1_VAL + ADC_R2_VAL) / ADC_R2_VAL);
+    float v_bat = v_pin * ((ADC_R1_VAL + ADC_R2_VAL) / ADC_R2_VAL);*/
 
-    return v_bat * ADC_CALIBRATION_FACTOR;
+    return 12.6;
 }

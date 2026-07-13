@@ -26,6 +26,21 @@
 	#define ADC_R1_VAL      45300.0f		//104
 	#define ADC_R2_VAL      9680.0f		//104
 	#define ADC_CALIBRATION_FACTOR 		1.03f//	104
+
+#elif (CAN_SLAVE_ID == 0x105)
+	#define ADC_R1_VAL      45300.0f		//104
+	#define ADC_R2_VAL      9680.0f		//104
+	#define ADC_CALIBRATION_FACTOR 		1.03f//	104
+
+#elif (CAN_SLAVE_ID == 0x106)
+	#define ADC_R1_VAL      45300.0f		//104
+	#define ADC_R2_VAL      9680.0f		//104
+	#define ADC_CALIBRATION_FACTOR 		1.03f//	104
+
+#elif (CAN_SLAVE_ID == 0x107)
+	#define ADC_R1_VAL      45300.0f		//104
+	#define ADC_R2_VAL      9680.0f		//104
+	#define ADC_CALIBRATION_FACTOR 		1.03f//	104
 #endif
 
 // Hàm khởi tạo (nếu cần) và hàm đọc

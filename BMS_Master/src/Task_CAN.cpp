@@ -106,7 +106,7 @@ void Task_CAN_Run(void *pvParameters) {
             xQueueSend(canQueue, &tempMsg, 0);
         }
         if ((xTaskGetTickCount() - lastHeartbeat) >= pdMS_TO_TICKS(CAN_HEARTBEAT_INTERVAL)) {
-            myCanBus.sendHeartbeat();
+            if (webSlavesActive) myCanBus.sendHeartbeat();
             lastHeartbeat = xTaskGetTickCount();
         }
         vTaskDelay(pdMS_TO_TICKS(1));

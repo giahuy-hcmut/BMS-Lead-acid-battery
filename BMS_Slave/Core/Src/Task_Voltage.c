@@ -24,13 +24,13 @@ void Task_Voltage_Run(void) {
     // 3. Logic Bảo vệ (Protection Logic) - SỬ DỤNG MACRO TỪ SHARED_DATA
     if (vol < THRESHOLD_UNDER_VOLT) {
         myBMS.status |= ERROR_UNDER_VOLT;
-        // Code ngắt Relay bảo vệ xả cạn (nếu có)
+    } else {
+        myBMS.status &= ~ERROR_UNDER_VOLT;
     }
-    else if (vol > THRESHOLD_OVER_VOLT) {
+
+    if (vol > THRESHOLD_OVER_VOLT) {
         myBMS.status |= ERROR_OVER_VOLT;
-        // Code ngắt Relay bảo vệ sạc nhồi (nếu có)
-    }
-    else {
-        myBMS.status = ERROR_NONE;
+    } else {
+        myBMS.status &= ~ERROR_OVER_VOLT;
     }
 }

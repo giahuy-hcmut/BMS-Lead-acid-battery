@@ -1,5 +1,6 @@
 #include "Task_Logic.h"
 #include "System_Data.h"
+#include <string.h>
 
 Logic_Manager::Logic_Manager() {
     isSystemLocked = false; // Mặc định vừa bật máy là chưa khóa
@@ -19,24 +20,32 @@ void Logic_Manager::processMessage(BMS_Message_t &msg) {
 
 // Hàm cắt điện và in cảnh báo
 void Logic_Manager::lockSystem(const char* reason) {
-    digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF); // CẮT ĐIỆN!
+    digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF);
     if (!isSystemLocked) {
         isSystemLocked = true;
+        systemLocked   = true;
+        strncpy(faultReason, reason, sizeof(faultReason) - 1);
         Serial.printf("\n[PROTECTION] RELAY TRIPPED! Reason: %s\n", reason);
     }
 }
 
 // Hàm cấp điện trở lại
 void Logic_Manager::unlockSystem() {
-    digitalWrite(PIN_RELAY_CONTROL, RELAY_ON); // ĐÓNG ĐIỆN!
+    digitalWrite(PIN_RELAY_CONTROL, RELAY_ON);
     if (isSystemLocked) {
         isSystemLocked = false;
+        systemLocked   = false;
+        faultReason[0] = '\0';
         Serial.println("\n[PROTECTION] SYSTEM RECOVERED. RELAY ON.");
     }
 }
 
 // BỘ NÃO ĐÁNH GIÁ AN TOÀN - Chạy mỗi 100ms
 void Logic_Manager::evaluateProtection() {
+    if (webForceRelayOff) {
+        lockSystem("Web Manual Override");
+        return;
+    }
     BMS_Pack_State snaps[TOTAL_PACKS];
     System_Get_Snapshot(snaps);
 

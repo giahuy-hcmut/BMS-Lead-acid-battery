@@ -16,6 +16,11 @@ void Task_Temperature_Run(void)
     // Gán vào biến chung gửi CAN
     if (temp != -127.0) {
         myBMS.temp = temp;
+        if (temp > THRESHOLD_OVER_TEMP) {
+            myBMS.status |= ERROR_OVER_TEMP;
+        } else {
+            myBMS.status &= ~ERROR_OVER_TEMP;
+        }
     }
 
     // Ra lệnh đo tiếp (STM32 sẽ rảnh tay đi làm việc khác trong 750ms tới)

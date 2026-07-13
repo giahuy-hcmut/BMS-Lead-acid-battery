@@ -45,6 +45,14 @@ extern BMS_Pack_State globalPacks[TOTAL_PACKS];
 extern SemaphoreHandle_t dataMutex;   
 extern QueueHandle_t canQueue;        
 
+// Web control flags (set by Task_WebServer, read by Task_Logic / Task_CAN)
+extern volatile bool webForceRelayOff;
+extern volatile bool webSlavesActive;
+
+// Protection state (set by Task_Logic, read by Task_WebServer)
+extern volatile bool systemLocked;
+extern char faultReason[64];
+
 // API Hệ thống
 void System_Data_Init();
 // Sửa lại khai báo hàm ở cuối file

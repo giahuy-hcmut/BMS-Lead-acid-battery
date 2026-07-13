@@ -1,9 +1,13 @@
 #include "System_Data.h"
 
 // 1. Biến toàn cục thực tế
-BMS_Pack_State globalPacks[TOTAL_PACKS]; 
-SemaphoreHandle_t dataMutex;   
-QueueHandle_t canQueue;        
+BMS_Pack_State globalPacks[TOTAL_PACKS];
+SemaphoreHandle_t dataMutex;
+QueueHandle_t canQueue;
+volatile bool webForceRelayOff = false;
+volatile bool webSlavesActive  = true;
+volatile bool systemLocked     = false;
+char faultReason[64]           = "";
 
 // 2. Khởi tạo
 void System_Data_Init() {

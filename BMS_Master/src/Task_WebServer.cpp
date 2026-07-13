@@ -28,6 +28,20 @@ bool WebServer_Manager::init() {
     // Kích hoạt kênh sự kiện Real-time
     server->addHandler(events);
 
+    server->on("/relay", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("state", true)) {
+            webForceRelayOff = (request->getParam("state", true)->value() == "off");
+        }
+        request->send(200, "text/plain", "OK");
+    });
+
+    server->on("/slaves", HTTP_POST, [](AsyncWebServerRequest *request) {
+        if (request->hasParam("state", true)) {
+            webSlavesActive = (request->getParam("state", true)->value() == "on");
+        }
+        request->send(200, "text/plain", "OK");
+    });
+
     // 4. Bắt đầu chạy Server
     server->begin();
     return true;
@@ -71,9 +85,12 @@ String WebServer_Manager::buildJsonString() {
     json += "\"sysI\":"; json += String(sysI, 2); json += ",";
     
     // BỔ SUNG: % Pin tổng
-    json += "\"soc\":"; json += String(sysSOC);
-    
-    // Đóng object JSON ở dòng cuối cùng
+    json += "\"soc\":"; json += String(sysSOC); json += ",";
+    json += "\"relayOff\":";     json += webForceRelayOff ? "true" : "false"; json += ",";
+    json += "\"slavesActive\":"; json += webSlavesActive  ? "true" : "false"; json += ",";
+    json += "\"locked\":";       json += systemLocked      ? "true" : "false"; json += ",";
+    json += "\"fault\":\"";      json += faultReason;                          json += "\"";
+
     json += "}";
 
     return json;
