@@ -1,0 +1,7 @@
+build/
+sim/simulate
+sim/simulate.exe
+sim_result.csv
+*.gcda
+*.gcno
+*.gcov
