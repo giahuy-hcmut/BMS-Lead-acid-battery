@@ -10,13 +10,10 @@
 #include "Task_Voltage.h"
 #include "Shared_Data.h"
 #include "BMS_ADC.h"
-#include "main.h"
-
-extern ADC_HandleTypeDef hadc1;
 
 void Task_Voltage_Run(void) {
     // 1. Gọi Driver để đo (Đã có sẵn lấy mẫu 100 lần và tính hiệu chỉnh)
-    float vol = BMS_ADC_GetVoltage(&hadc1);
+    float vol = BMS_ADC_GetVoltage();
 
     // 2. Cập nhật vào kho chung
     myBMS.voltage = vol;

@@ -1,0 +1,3 @@
+../Core/Src/Shared_Data.c:31:6:BMS_Data_SetVoltage	1
+../Core/Src/Shared_Data.c:37:6:BMS_Data_SetTemp	1
+../Core/Src/Shared_Data.c:43:6:BMS_Data_GetSnapshot	2

@@ -6,11 +6,22 @@
  */
 
 #include "BMS_ADC.h"
+#include <stddef.h>          /* NULL */
 
 /* Debug globals — visible in STM32CubeIDE "Live Expressions" during
  * calibration. Kept non-static so the debugger can resolve them. */
 volatile float g_dbg_adc_avg    = 0.0f;
 volatile float g_dbg_v_computed = 0.0f;
+
+/* The ADC handle, owned by this driver. main() hands it over once via
+ * BMS_ADC_Init(); after that no other file needs to know that an
+ * ADC_HandleTypeDef even exists. */
+static ADC_HandleTypeDef *s_hadc = NULL;
+
+void BMS_ADC_Init(ADC_HandleTypeDef *hadc)
+{
+    s_hadc = hadc;
+}
 
 /*
  * Read the battery terminal voltage.
@@ -22,16 +33,25 @@ volatile float g_dbg_v_computed = 0.0f;
  * Live Expressions, record it against a VOM at two voltages, then compute
  * K,B and put them in BMS_ADC.h (per slave).
  */
-float BMS_ADC_GetVoltage(ADC_HandleTypeDef *hadc)
+float BMS_ADC_GetVoltage(void)
 {
     uint32_t adc_sum = 0;
 
+    /* BMS_ADC_Init() was never called. Returning 0.0 V is deliberate:
+     * it is below THRESHOLD_UNDER_VOLT, so the under-voltage flag fires
+     * and the master sees a faulty slave instead of a plausible reading. */
+    if (s_hadc == NULL) {
+        g_dbg_adc_avg    = 0.0f;
+        g_dbg_v_computed = 0.0f;
+        return 0.0f;
+    }
+
     for (int i = 0; i < NUM_SAMPLES; i++) {
-        HAL_ADC_Start(hadc);
-        if (HAL_ADC_PollForConversion(hadc, 2) == HAL_OK) {   /* 2 ms timeout */
-            adc_sum += HAL_ADC_GetValue(hadc);
+        HAL_ADC_Start(s_hadc);
+        if (HAL_ADC_PollForConversion(s_hadc, 2) == HAL_OK) {   /* 2 ms timeout */
+            adc_sum += HAL_ADC_GetValue(s_hadc);
         }
-        HAL_ADC_Stop(hadc);
+        HAL_ADC_Stop(s_hadc);
     }
 
     float adc_avg   = (float)adc_sum / (float)NUM_SAMPLES;

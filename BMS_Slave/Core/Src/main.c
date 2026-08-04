@@ -29,6 +29,7 @@
 #include "Task_Temperature.h"
 #include "Task_Sleep.h"
 #include "ds18b20.h"
+#include "BMS_ADC.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -110,6 +111,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   // 1. Calib ADC & Start CAN
     HAL_ADCEx_Calibration_Start(&hadc1);
+    BMS_ADC_Init(&hadc1);          // nộp handle cho driver, phải trước mọi Task
     HAL_CAN_Start(&hcan);
     BMS_CAN_Init(&hcan);
     BMS_CAN_InitRx(&hcan);
