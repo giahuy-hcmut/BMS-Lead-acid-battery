@@ -8,10 +8,9 @@
 
 #include "Task_CAN.h"
 #include "Shared_Data.h"
+#include "Board_Config.h"   // CAN_SLAVE_ID
 #include "BMS_CAN.h"
-#include "main.h"
-
-extern CAN_HandleTypeDef hcan;
+#include "BSP_Led.h"
 
 void Task_CAN_Run(void) {
     uint8_t txData[8] = {0};
@@ -38,8 +37,8 @@ void Task_CAN_Run(void) {
     txData[6] = snap.faults;
 
     // --- 4. GỬI ĐI ---
-    BMS_CAN_Transmit(&hcan, CAN_SLAVE_ID, txData, 8);
+    BMS_CAN_Transmit(CAN_SLAVE_ID, txData, 8);
 
     // Nháy đèn báo hiệu đã gửi
-    HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_13);
+    BSP_Led_Toggle();
 }

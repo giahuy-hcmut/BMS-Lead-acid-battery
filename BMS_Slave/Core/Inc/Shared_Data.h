@@ -22,8 +22,6 @@
 #define SHARED_DATA_H
 
 #include <stdint.h>
-#include "Board_Config.h"   // MIGRATION SHIM: SLAVE_INDEX / CAN ids /
-                            // THRESHOLD_* moved to Board_Config.h (step 1)
 
 // Định nghĩa các cờ lỗi (Bitmask)
 #define ERROR_NONE          0x00
@@ -53,15 +51,5 @@ void BMS_Data_SetTemp(float temp_c, uint8_t fault_bits);         // Task_Tempera
 
 // --- Consumer ---
 void BMS_Data_GetSnapshot(BMS_Snapshot_t *out);
-
-// ==========================================
-// CAN HEARTBEAT TIMESTAMP
-// ==========================================
-// Ghi boi ISR CAN RX (BMS_CAN.c), doc boi Task_Sleep.
-// Day la du lieu cua driver CAN, khong phai cua kho do luong -> se chuyen
-// vao BMS_CAN.c sau mot getter o Buoc 6.
-extern volatile uint32_t lastHeartbeatTick;
-
-
 
 #endif /* SHARED_DATA_H */

@@ -27,8 +27,7 @@ Core/Src/Task_CAN.o: ../Core/Src/Task_CAN.c ../Core/Inc/Task_CAN.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_flash_ex.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h \
- ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h \
- ../Core/Inc/main.h
+ ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 ../Core/Inc/Task_CAN.h:
 ../Core/Inc/Shared_Data.h:
 ../Core/Inc/Board_Config.h:
@@ -60,4 +59,3 @@ Core/Src/Task_CAN.o: ../Core/Src/Task_CAN.c ../Core/Inc/Task_CAN.h \
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h:
-../Core/Inc/main.h:

@@ -9,6 +9,7 @@
 /* Task_Voltage.c */
 #include "Task_Voltage.h"
 #include "Shared_Data.h"
+#include "Board_Config.h"   // THRESHOLD_UNDER_VOLT / THRESHOLD_OVER_VOLT
 #include "BMS_ADC.h"
 
 void Task_Voltage_Run(void) {

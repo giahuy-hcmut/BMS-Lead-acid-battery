@@ -30,6 +30,7 @@
 #include "Task_Sleep.h"
 #include "ds18b20.h"
 #include "BMS_ADC.h"
+#include "Board_Config.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -114,7 +115,7 @@ int main(void)
     BMS_ADC_Init(&hadc1);          // nộp handle cho driver, phải trước mọi Task
     HAL_CAN_Start(&hcan);
     BMS_CAN_Init(&hcan);
-    BMS_CAN_InitRx(&hcan);
+    BMS_CAN_InitRx();
 
     // 2. KHỞI TẠO SCHEDULER
       SCH_Init();

@@ -64,8 +64,3 @@ void BMS_Data_GetSnapshot(BMS_Snapshot_t *out)
 
     __set_PRIMASK(primask);
 }
-
-// ==========================================
-// CAN HEARTBEAT TIMESTAMP - chuyen vao BMS_CAN.c o Buoc 6
-// ==========================================
-volatile uint32_t lastHeartbeatTick = 0;

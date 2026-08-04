@@ -7,6 +7,7 @@
 
 #include "ds18b20.h"
 #include "Shared_Data.h"
+#include "Board_Config.h"   // THRESHOLD_OVER_TEMP
 #include "Task_Temperature.h"
 void Task_Temperature_Run(void)
 {
