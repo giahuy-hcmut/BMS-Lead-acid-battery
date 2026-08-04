@@ -10,19 +10,8 @@
 #define SHARED_DATA_H
 
 #include <stdint.h>
-
-// ==========================================
-// ⚙️ CẤU HÌNH HỆ THỐNG (SYSTEM CONFIG)
-// ==========================================
-
-
-// 1. CẤU HÌNH BẢO VỆ PIN (Dành cho Li-ion 4.2V Testbench)
-#define THRESHOLD_OVER_VOLT     12.7f   // Quá áp (V)
-#define THRESHOLD_UNDER_VOLT    9.00f   // Sụt áp (V)
-#define THRESHOLD_OVER_TEMP     60.0f   // Quá nhiệt độ (C)
-
-// 2. CẤU HÌNH MẠNG LƯỚI
-#define CAN_SLAVE_ID            0x103   // Địa chỉ CAN của Node này
+#include "Board_Config.h"   // MIGRATION SHIM: SLAVE_INDEX / CAN ids /
+                            // THRESHOLD_* moved to Board_Config.h (step 1)
 
 // Định nghĩa các cờ lỗi (Bitmask)
 #define ERROR_NONE          0x00

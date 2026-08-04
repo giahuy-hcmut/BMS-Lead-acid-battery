@@ -1,6 +1,6 @@
 Core/Src/Task_Voltage.o: ../Core/Src/Task_Voltage.c \
  ../Core/Inc/Task_Voltage.h ../Core/Inc/Shared_Data.h \
- ../Core/Inc/BMS_ADC.h \
+ ../Core/Inc/Board_Config.h ../Core/Inc/BMS_ADC.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h \
  ../Core/Inc/stm32f1xx_hal_conf.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h \
@@ -31,6 +31,7 @@ Core/Src/Task_Voltage.o: ../Core/Src/Task_Voltage.c \
  ../Core/Inc/Shared_Data.h ../Core/Inc/main.h
 ../Core/Inc/Task_Voltage.h:
 ../Core/Inc/Shared_Data.h:
+../Core/Inc/Board_Config.h:
 ../Core/Inc/BMS_ADC.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:

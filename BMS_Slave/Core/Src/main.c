@@ -124,7 +124,7 @@ int main(void)
 
         // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
           // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
-          uint32_t start_delay = (CAN_SLAVE_ID & 0x0F) * 100;
+          uint32_t start_delay = (SLAVE_INDEX * 100U) + 300U;
           SCH_Add_Task(Task_CAN_Run, start_delay, 1000);
           // 1. Khởi động Timer cho DS18B20
           DS18B20_Init();

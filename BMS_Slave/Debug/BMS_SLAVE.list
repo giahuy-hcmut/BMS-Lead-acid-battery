@@ -35,17 +35,17 @@ Idx Name          Size      VMA       LMA       File off  Algn
                   CONTENTS, READONLY, DEBUGGING, OCTETS
  15 .debug_rnglists 00000a62  00000000  00000000  000179f0  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 16 .debug_macro  00018786  00000000  00000000  00018452  2**0
+ 16 .debug_macro  000187bf  00000000  00000000  00018452  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 17 .debug_line   00011248  00000000  00000000  00030bd8  2**0
+ 17 .debug_line   000112c6  00000000  00000000  00030c11  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 18 .debug_str    0008c3f2  00000000  00000000  00041e20  2**0
+ 18 .debug_str    0008c44f  00000000  00000000  00041ed7  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 19 .comment      00000043  00000000  00000000  000ce212  2**0
+ 19 .comment      00000043  00000000  00000000  000ce326  2**0
                   CONTENTS, READONLY
- 20 .debug_frame  000037d0  00000000  00000000  000ce258  2**2
+ 20 .debug_frame  000037d0  00000000  00000000  000ce36c  2**2
                   CONTENTS, READONLY, DEBUGGING, OCTETS
- 21 .debug_line_str 00000046  00000000  00000000  000d1a28  2**0
+ 21 .debug_line_str 00000046  00000000  00000000  000d1b3c  2**0
                   CONTENTS, READONLY, DEBUGGING, OCTETS
 
 Disassembly of section .text:
@@ -2229,7 +2229,7 @@ int main(void)
 
         // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
           // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
-          uint32_t start_delay = (CAN_SLAVE_ID & 0x0F) * 100;
+          uint32_t start_delay = (SLAVE_INDEX * 100U) + 300U;
  80010f0:	f44f 7396 	mov.w	r3, #300	@ 0x12c
  80010f4:	607b      	str	r3, [r7, #4]
           SCH_Add_Task(Task_CAN_Run, start_delay, 1000);

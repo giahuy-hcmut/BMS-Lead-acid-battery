@@ -27,8 +27,9 @@ Core/Src/Task_Temperature.o: ../Core/Src/Task_Temperature.c \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h \
- ../Core/Inc/Shared_Data.h ../Core/Inc/Task_Temperature.h \
- ../Core/Inc/ds18b20.h ../Core/Inc/Shared_Data.h
+ ../Core/Inc/Shared_Data.h ../Core/Inc/Board_Config.h \
+ ../Core/Inc/Task_Temperature.h ../Core/Inc/ds18b20.h \
+ ../Core/Inc/Shared_Data.h
 ../Core/Inc/ds18b20.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:
@@ -58,6 +59,7 @@ Core/Src/Task_Temperature.o: ../Core/Src/Task_Temperature.c \
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h:
 ../Core/Inc/Shared_Data.h:
+../Core/Inc/Board_Config.h:
 ../Core/Inc/Task_Temperature.h:
 ../Core/Inc/ds18b20.h:
 ../Core/Inc/Shared_Data.h:

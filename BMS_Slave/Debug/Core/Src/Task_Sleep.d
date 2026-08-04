@@ -1,5 +1,5 @@
 Core/Src/Task_Sleep.o: ../Core/Src/Task_Sleep.c ../Core/Inc/Task_Sleep.h \
- ../Core/Inc/Shared_Data.h ../Core/Inc/main.h \
+ ../Core/Inc/Shared_Data.h ../Core/Inc/Board_Config.h ../Core/Inc/main.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h \
  ../Core/Inc/stm32f1xx_hal_conf.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_rcc.h \
@@ -29,6 +29,7 @@ Core/Src/Task_Sleep.o: ../Core/Src/Task_Sleep.c ../Core/Inc/Task_Sleep.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h
 ../Core/Inc/Task_Sleep.h:
 ../Core/Inc/Shared_Data.h:
+../Core/Inc/Board_Config.h:
 ../Core/Inc/main.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:

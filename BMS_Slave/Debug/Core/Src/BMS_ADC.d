@@ -26,7 +26,7 @@ Core/Src/BMS_ADC.o: ../Core/Src/BMS_ADC.c ../Core/Inc/BMS_ADC.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_pwr.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h \
  ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h \
- ../Core/Inc/Shared_Data.h
+ ../Core/Inc/Shared_Data.h ../Core/Inc/Board_Config.h
 ../Core/Inc/BMS_ADC.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal.h:
 ../Core/Inc/stm32f1xx_hal_conf.h:
@@ -56,3 +56,4 @@ Core/Src/BMS_ADC.o: ../Core/Src/BMS_ADC.c ../Core/Inc/BMS_ADC.h \
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim.h:
 ../Drivers/STM32F1xx_HAL_Driver/Inc/stm32f1xx_hal_tim_ex.h:
 ../Core/Inc/Shared_Data.h:
+../Core/Inc/Board_Config.h:
