@@ -28,9 +28,44 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   (gộp luôn vai trò heartbeat — slave thức khi nhận 0x100, đọc dòng
   byte0-1 int16 A×100), chu kỳ 5ms/200Hz. Không còn heartbeat riêng.
   Slave sleep (WFI) sau 5s không nhận 0x100.
-- Hiện trạng firmware: áp đang stub `return 12.6` (BMS_ADC.c), nhiệt stub
-  `return 30` (ds18b20.c) — để test truyền thông 5 node (đã chạy OK,
-  web hiện đủ 5 node).
+- Hiện trạng firmware: áp ĐÃ BỎ STUB — BMS_ADC.c đọc ADC thật (100 mẫu)
+  + cầu phân áp 33k/9.1k + calib 2 điểm CALIB_K/CALIB_B (đang K=1,B=0,
+  CHỜ đo VOM 2 mốc để điền per-slave). Biến debug g_dbg_v_computed /
+  g_dbg_adc_avg cho Live Expressions. Nhiệt vẫn stub `return 30`
+  (ds18b20.c). Quy trình calib: build K=1/B=0 → Live Expr xem
+  g_dbg_v_computed → đo VOM 2 mốc → K=(V2-V1)/(Vt2-Vt1), B=V1-K*Vt1 →
+  điền BMS_ADC.h. Calib 2 điểm ROBUST cả khi R danh nghĩa lệch R thật
+  (vẫn tuyến tính nên K,B bù được).
+- **KIẾN TRÚC PHẦN CỨNG (4 khối, thầy chốt — đang refactor):**
+  - **Khối THU THẬP (×5, mỗi bình 1 bộ = slave):** STM32F103 + ADuM1201
+    (cách ly galvanic 2 kênh cho TXD/RXD của CAN — bắt buộc vì pack nối
+    tiếp) + MCP2551 (CAN transceiver) + buck 12V→5V lấy từ CHÍNH bình đó
+    (nuôi STM32 + 1 nửa ADuM).
+  - **Khối XỬ LÝ (master):** ESP32 + buck 60V→5V (từ pack, nuôi ESP32 +
+    MCP2551) + nửa còn lại ADuM của 5 slave + **MCP2515 (CAN controller
+    SPI) để gửi lên CAN BUS TRÊN XE**. → có 2 BUS CAN: nội bộ
+    (master↔slave qua MCP2551) và xe (qua MCP2515).
+  - **Khối ĐÓNG NGẮT:** contactor 200A (dòng chính) + module relay 5V (đã
+    tích hợp cách ly + diode coil-relay) đóng/ngắt COIL contactor, ESP32
+    điều khiển relay + **điện trở SHUNT ở dòng chính (60V high-side) để
+    ESP32 đo dòng**.
+  - **Mạng:** CAN (thu thập↔xử lý) · Web + ESP-NOW (người dùng↔xử lý).
+  - Cân bằng pin (thụ động/chủ động): KHÔNG làm ở đồ án này (khóa sau).
+    Logic hiện tại = nếu SOC/áp các bình LỆCH quá nhiều → NGẮT relay
+    (bảo vệ, không cân bằng).
+- **⚠️ CẢM BIẾN DÒNG ĐỔI: ACS758 (Hall) → SHUNT.** Config.h + mô hình
+  nhiễu/bias trong sim đang neo theo ACS758 datasheet → PHẢI neo lại theo
+  SHUNT + amp khi quay lại tinh chỉnh SOC. Shunt high-side 60V → cần amp
+  chịu common-mode 60V (INA240/INA282, KHÔNG dùng INA226 ≤36V). Bias giờ
+  đến từ offset của AMP + trôi nhiệt shunt (không phải offset Hall) —
+  auto-zero VẪN cần, logic không đổi, chỉ khác nguồn bias.
+- **⚠️ DÒNG GIỜ TỚI ~100A** (4 motor BLDC × 25A, xe Murata 4 bánh), KHÔNG
+  phải 50A. Khi quay lại SOC: nâng sim I_CAP 50→100A; nâng KF_MAX_CURRENT
+  (60A) — nếu không sẽ CHẶN NHẦM dòng thật 100A. Dòng chạy như nhau qua
+  mọi bình nối tiếp (100A/20Ah = 5C — cao, ghi chú cho HPPC/nhiệt).
+- Cầu phân áp đo áp: ĐÃ CHỐT R1=33kΩ, R2=9.1kΩ GIỐNG cả 5 slave (tỉ lệ
+  0.2162: 14V→3.03V; R_source 7.13kΩ). CHƯA nhập code (BMS_ADC.h vẫn giá
+  trị cũ per-slave 46.5k/9.75k... — áp đang stub nên chưa ảnh hưởng).
 - **BẢN ĐỒ CHÂN STM32F103C8T6 (slave) — đọc từ firmware:**
   - Tín hiệu: PB1 = đo áp bình (ADC1_IN9, cầu phân áp) · PB7 = DS18B20
     nhiệt (1-Wire, open-drain, dùng TIM4 làm delay µs) · PB8 = CAN_RX ·

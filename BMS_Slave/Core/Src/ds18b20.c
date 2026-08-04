@@ -75,7 +75,7 @@ void DS18B20_Start_Conversion(void) {
 
 // Đọc kết quả
 float DS18B20_Read_Temperature(void) {
-    /*uint8_t Temp_LSB, Temp_MSB;
+    uint8_t Temp_LSB, Temp_MSB;
     uint16_t Temp;
     float Temperature;
 
@@ -88,7 +88,7 @@ float DS18B20_Read_Temperature(void) {
     Temp_MSB = DS18B20_Read();
 
     Temp = (Temp_MSB << 8) | Temp_LSB;
-    Temperature = (float)Temp / 16.0;*/
+    Temperature = (float)Temp / 16.0;
 
-    return 30;
+    return Temperature;
 }

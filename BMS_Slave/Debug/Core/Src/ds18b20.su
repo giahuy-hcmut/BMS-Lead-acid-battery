@@ -4,4 +4,4 @@
 ../Core/Src/ds18b20.c:36:6:DS18B20_Write	24	static
 ../Core/Src/ds18b20.c:53:9:DS18B20_Read	16	static
 ../Core/Src/ds18b20.c:70:6:DS18B20_Start_Conversion	8	static
-../Core/Src/ds18b20.c:77:7:DS18B20_Read_Temperature	4	static
+../Core/Src/ds18b20.c:77:7:DS18B20_Read_Temperature	16	static

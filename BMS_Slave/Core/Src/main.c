@@ -131,7 +131,7 @@ int main(void)
 
           // 2. Thêm Task Nhiệt độ (Chạy lặp mỗi 1000ms, khởi động chệch đi 10ms để né Task Áp)
           SCH_Add_Task(Task_Temperature_Run, 10, 1000);
-          SCH_Add_Task(Task_Sleep_Run, 0, 1000);
+          //SCH_Add_Task(Task_Sleep_Run, 0, 1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */

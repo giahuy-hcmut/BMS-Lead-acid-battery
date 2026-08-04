@@ -1,1 +1,1 @@
-../Core/Src/BMS_ADC.c:10:7:BMS_ADC_GetVoltage	16	static
+../Core/Src/BMS_ADC.c:25:7:BMS_ADC_GetVoltage	40	static
