@@ -55,18 +55,11 @@ void BMS_Data_SetTemp(float temp_c, uint8_t fault_bits);         // Task_Tempera
 void BMS_Data_GetSnapshot(BMS_Snapshot_t *out);
 
 // ==========================================
-// LEGACY - duoc thay the dan o Buoc 5, xoa o Buoc 7
+// CAN HEARTBEAT TIMESTAMP
 // ==========================================
-typedef struct {
-    float voltage;      // Điện áp (V)
-    float current;      // Dòng điện (A) - Nếu có
-    float temp;         // Nhiệt độ (doC)
-    uint8_t soc;        // Dung lượng (%)
-    uint8_t status;     // Trạng thái lỗi
-} BMS_State_t;
-
-// Khai báo biến extern để các file khác dùng chung
-extern BMS_State_t myBMS;
+// Ghi boi ISR CAN RX (BMS_CAN.c), doc boi Task_Sleep.
+// Day la du lieu cua driver CAN, khong phai cua kho do luong -> se chuyen
+// vao BMS_CAN.c sau mot getter o Buoc 6.
 extern volatile uint32_t lastHeartbeatTick;
 
 

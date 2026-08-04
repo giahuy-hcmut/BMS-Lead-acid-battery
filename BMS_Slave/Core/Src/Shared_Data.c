@@ -66,8 +66,6 @@ void BMS_Data_GetSnapshot(BMS_Snapshot_t *out)
 }
 
 // ==========================================
-// LEGACY - xoa o Buoc 7
+// CAN HEARTBEAT TIMESTAMP - chuyen vao BMS_CAN.c o Buoc 6
 // ==========================================
-// Khởi tạo biến thực sự tại đây
-BMS_State_t myBMS = {0};
 volatile uint32_t lastHeartbeatTick = 0;

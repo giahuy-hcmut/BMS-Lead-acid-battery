@@ -13,14 +13,12 @@ void Task_Temperature_Run(void)
     // Đọc kết quả của nhịp đo trước
     float temp = DS18B20_Read_Temperature();
 
-    // Gán vào biến chung gửi CAN
+    // Gán vào kho gửi CAN. Doc loi (-127) thi KHONG goi Set: gia tri va co
+    // loi cu duoc giu nguyen - dung nhu hanh vi truoc day.
     if (temp != -127.0) {
-        myBMS.temp = temp;
-        if (temp > THRESHOLD_OVER_TEMP) {
-            myBMS.status |= ERROR_OVER_TEMP;
-        } else {
-            myBMS.status &= ~ERROR_OVER_TEMP;
-        }
+        uint8_t faults = 0;
+        if (temp > THRESHOLD_OVER_TEMP) { faults |= ERROR_OVER_TEMP; }
+        BMS_Data_SetTemp(temp, faults);
     }
 
     // Ra lệnh đo tiếp (STM32 sẽ rảnh tay đi làm việc khác trong 750ms tới)
