@@ -56,12 +56,21 @@ uint8_t DS18B20_Read(void) {
         HAL_GPIO_WritePin(DS18B20_PORT, DS18B20_PIN, 0); // Kéo xuống báo hiệu
         delay_us(2);
         HAL_GPIO_WritePin(DS18B20_PORT, DS18B20_PIN, 1); // Nhả ra để cảm biến phản hồi
-        delay_us(10); // Đợi 10us cho ổn định tín hiệu
+
+        /* The DS18B20 read slot closes 15 us after the line is pulled low, so
+         * the sample must land before then. delay_us() polls TIM4 and is NOT
+         * interrupt-protected, so any ISR firing here stretches it.
+         * This used to be delay_us(10) -> sampling at ~12 us, only 3 us of
+         * margin. The CAN RX ISR alone is ~4 us and will run every 5 ms once
+         * the master streams the current frame at 200 Hz, which would push the
+         * sample past the window and corrupt bits.
+         * Sampling at ~7 us leaves ~8 us of margin instead. */
+        delay_us(5);
 
         if (HAL_GPIO_ReadPin(DS18B20_PORT, DS18B20_PIN)) {
             value |= 1 << i; // Nếu đọc được mức 1
         }
-        delay_us(50); // Chờ hết chu kỳ
+        delay_us(55); // Chờ hết chu kỳ (tong khe >= 60us + 1us hoi phuc)
     }
     return value;
 }
