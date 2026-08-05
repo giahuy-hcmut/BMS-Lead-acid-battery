@@ -15,8 +15,8 @@
 // ==========================================
 // static   -> internal linkage -> khong file nao khac goi ten duoc.
 //             Ai viet `extern` o file khac se LOI LUC LINK.
-// volatile -> tu GD5 se co ISR CAN ghi vao s_current_a, va cac lenh doc
-//             ben duoi khong duoc phep bi compiler cache vao register.
+// volatile -> ISR CAN ghi vao s_current_a, va cac lenh doc ben duoi
+//             khong duoc phep bi compiler cache vao register.
 static volatile float   s_voltage_v = 0.0f;
 static volatile float   s_current_a = 0.0f;
 static volatile float   s_temp_c    = 0.0f;
@@ -38,6 +38,14 @@ void BMS_Data_SetTemp(float temp_c, uint8_t fault_bits)
 {
     s_temp_c      = temp_c;
     s_faults_temp = fault_bits;
+}
+
+void BMS_Data_SetCurrent(float current_a)
+{
+    /* Called from the CAN RX ISR. A single aligned 32-bit store (STR), so it
+     * is atomic against a task read and needs no critical section. The store
+     * itself does no arithmetic - the caller hands over amperes already. */
+    s_current_a = current_a;
 }
 
 void BMS_Data_GetSnapshot(BMS_Snapshot_t *out)

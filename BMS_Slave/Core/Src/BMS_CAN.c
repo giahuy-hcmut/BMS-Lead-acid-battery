@@ -7,8 +7,11 @@
 
 
 #include "BMS_CAN.h"
-#include "Board_Config.h"   // CAN_MASTER_ID. KHONG include Shared_Data.h:
-                            // driver khong duoc phu thuoc kho du lieu.
+#include "Board_Config.h"   // CAN_MASTER_ID
+#include "Shared_Data.h"    // BMS_Data_SetCurrent - the RX ISR pushes the pack
+                            // current straight into the store, so that
+                            // GetSnapshot() still hands out voltage+current
+                            // from one consistent instant.
 #include <stddef.h>         // NULL
 
 
@@ -59,12 +62,29 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     uint8_t RxData[8];
 
     /* Uses the handle HAL passed in, not s_hcan: the ISR must work off
-     * whichever peripheral actually fired. */
-    HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData);
+     * whichever peripheral actually fired.
+     * Check the return: on failure RxHeader and RxData are uninitialised
+     * stack garbage that could match CAN_MASTER_ID by chance and feed a
+     * random current into the filter. */
+    if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+        return;
+    }
 
     if (RxHeader.StdId == CAN_MASTER_ID) {
-        s_last_rx_tick = HAL_GetTick();
-        /* GD5: doc dong dien tu RxData[0..1] (int16, A x100) tai day */
+        s_last_rx_tick = HAL_GetTick();     /* frame 0x100 doubles as heartbeat */
+
+        /* Pack current: MSB first, int16 two's complement, A x100 - the same
+         * convention as bytes 2-3 of this slave's own frame.
+         * The DLC test keeps this build working against a master that still
+         * sends the old empty heartbeat (current then stays at its last value
+         * until Task_SOC's staleness timeout zeroes it).
+         * `* 0.01f` not `/ 100.0f`: a softfloat multiply is ~2.5x cheaper than
+         * a divide, which matters in interrupt context. The ~1e-9 relative
+         * difference is irrelevant for a current in amperes. */
+        if (RxHeader.DLC >= 2U) {
+            int16_t raw = (int16_t)(((uint16_t)RxData[0] << 8) | (uint16_t)RxData[1]);
+            BMS_Data_SetCurrent((float)raw * 0.01f);
+        }
     }
 }
 

@@ -39,7 +39,7 @@
 typedef struct
 {
     float   voltage_v;      // dien ap binh (V)
-    float   current_a;      // dong dien (A) - 0.0 cho toi GD5
+    float   current_a;      // dong dien (A), >0 = XA
     float   temp_c;         // nhiet do (C)
     uint8_t soc_pct;        // SOC (%)      - 0 cho toi GD5
     uint8_t faults;         // OR cua co loi cua moi chu
@@ -48,6 +48,11 @@ typedef struct
 // --- Producers: exactly one caller each ---
 void BMS_Data_SetVoltage(float voltage_v, uint8_t fault_bits);   // Task_Voltage
 void BMS_Data_SetTemp(float temp_c, uint8_t fault_bits);         // Task_Temperature
+
+// Dong dien tu frame CAN_MASTER_ID, DA doi ve don vi ampe (>0 = xa).
+// Nguoi goi tu scale, kho khong tinh toan gi.
+// Goi tu ISR CAN RX (BMS_CAN.c).
+void BMS_Data_SetCurrent(float current_a);                       // CAN RX ISR
 
 // --- Consumer ---
 void BMS_Data_GetSnapshot(BMS_Snapshot_t *out);
