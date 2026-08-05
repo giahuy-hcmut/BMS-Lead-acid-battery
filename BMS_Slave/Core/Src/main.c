@@ -111,30 +111,30 @@ int main(void)
   MX_TIM4_Init();
   /* USER CODE BEGIN 2 */
   // 1. Calib ADC & Start CAN
-    HAL_ADCEx_Calibration_Start(&hadc1);
-    BMS_ADC_Init(&hadc1);          // nộp handle cho driver, phải trước mọi Task
-    HAL_CAN_Start(&hcan);
-    BMS_CAN_Init(&hcan);
-    BMS_CAN_InitRx();
+  HAL_ADCEx_Calibration_Start(&hadc1);
+  BMS_ADC_Init(&hadc1);          // nộp handle cho driver, phải trước mọi Task
+  HAL_CAN_Start(&hcan);
+  BMS_CAN_Init(&hcan);
+  BMS_CAN_InitRx();
 
-    // 2. KHỞI TẠO SCHEDULER
-      SCH_Init();
+  // 2. KHỞI TẠO SCHEDULER
+  SCH_Init();
 
-      // 3. THÊM CÁC TASK VÀO LỊCH TRÌNH
+  // 3. THÊM CÁC TASK VÀO LỊCH TRÌNH
 
-        // Task Đo Áp: Chạy ngay (delay 0), lặp 50ms/lần
-        SCH_Add_Task(Task_Voltage_Run, 0, 50);
+  // Task Đo Áp: Chạy ngay (delay 0), lặp 50ms/lần
+  SCH_Add_Task(Task_Voltage_Run, 0, 50);
 
-        // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
-          // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
-          uint32_t start_delay = (SLAVE_INDEX * 100U) + 300U;
-          SCH_Add_Task(Task_CAN_Run, start_delay, 1000);
-          // 1. Khởi động Timer cho DS18B20
-          DS18B20_Init();
+  // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
+  // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
+  uint32_t start_delay = (SLAVE_INDEX * 100U) + 300U;
+  SCH_Add_Task(Task_CAN_Run, start_delay, 1000);
+  // 1. Khởi động Timer cho DS18B20
+  DS18B20_Init();
 
-          // 2. Thêm Task Nhiệt độ (Chạy lặp mỗi 1000ms, khởi động chệch đi 10ms để né Task Áp)
-          SCH_Add_Task(Task_Temperature_Run, 10, 1000);
-          //SCH_Add_Task(Task_Sleep_Run, 0, 1000);
+  // 2. Thêm Task Nhiệt độ (Chạy lặp mỗi 1000ms, khởi động chệch đi 10ms để né Task Áp)
+  SCH_Add_Task(Task_Temperature_Run, 10, 1000);
+  //SCH_Add_Task(Task_Sleep_Run, 0, 1000);
   /* USER CODE END 2 */
 
   /* Infinite loop */
