@@ -5,10 +5,14 @@
 set -e
 cd "$(dirname "$0")"
 
-INC="-I unity -I src"
+# SOC_Kalman lives in the firmware tree (Core/) - there is exactly ONE copy,
+# so these tests exercise the very file that gets flashed onto the STM32.
+# Keeping a second copy under UnitTest/src would let the two drift apart the
+# first time a filter parameter is retuned.
+INC="-I unity -I ../Core/Inc"
 CFLAGS="-Wall -Wextra -std=c11"
 TEST="test/test_SOC_Kalman.c"
-MODULE="src/SOC_Kalman.c"
+MODULE="../Core/Src/SOC_Kalman.c"
 
 mkdir -p build
 

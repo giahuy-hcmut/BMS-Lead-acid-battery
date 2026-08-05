@@ -141,8 +141,15 @@ float SOC_Kalman_Update(KF_State_t *kf, float v_measured,
     float S   = h0 * ph0 + h1 * ph1 + KF_R_MEAS;
 
     /* Defense #3: innovation gating. If the mismatch is far larger than
-     * statistically expected, the measurement is corrupt -> skip correction. */
-    if (fabsf(innovation) > KF_GATE_SIGMA * sqrtf(S)) {
+     * statistically expected, the measurement is corrupt -> skip correction.
+     *
+     * Compared as squares rather than |y| > k*sqrt(S). The two are equivalent
+     * because both sides are non-negative and S > 0 always (S = H*P*H' + R
+     * with R = KF_R_MEAS > 0). Avoiding sqrtf() keeps libm out of the firmware
+     * link, which measured 308 bytes of flash and 392 bytes of RAM on the
+     * STM32F103 - RAM being the scarce resource at 20 KB - and it drops a
+     * ~100-300 cycle soft-float call from every Update. */
+    if ((innovation * innovation) > (KF_GATE_SIGMA * KF_GATE_SIGMA * S)) {
         return SOC_Kalman_GetSOC(kf);
     }
 
