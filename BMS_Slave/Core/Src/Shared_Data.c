@@ -28,10 +28,16 @@ static volatile uint8_t s_soc_pct   = 0;
 static volatile uint8_t s_faults_volt = 0;
 static volatile uint8_t s_faults_temp = 0;
 
+// Danh dau "co mau dien ap moi chua ai dung". Bat trong SetVoltage, xoa boi
+// TakeVoltageFresh. Cho phep Task_SOC (5 ms) biet khi nao mau ap (50 ms) la
+// tuoi, de khong bao gio Update Kalman bang mot mau da dung roi.
+static volatile uint8_t s_voltage_fresh = 0;
+
 void BMS_Data_SetVoltage(float voltage_v, uint8_t fault_bits)
 {
-    s_voltage_v   = voltage_v;
-    s_faults_volt = fault_bits;
+    s_voltage_v     = voltage_v;
+    s_faults_volt   = fault_bits;
+    s_voltage_fresh = 1;        /* moi mau moi -> danh dau tuoi */
 }
 
 void BMS_Data_SetTemp(float temp_c, uint8_t fault_bits)
@@ -46,6 +52,23 @@ void BMS_Data_SetCurrent(float current_a)
      * is atomic against a task read and needs no critical section. The store
      * itself does no arithmetic - the caller hands over amperes already. */
     s_current_a = current_a;
+}
+
+void BMS_Data_SetSoc(uint8_t soc_pct)
+{
+    s_soc_pct = soc_pct;
+}
+
+uint8_t BMS_Data_TakeVoltageFresh(void)
+{
+    /* Read-and-clear. The producer (Task_Voltage) and the consumer (Task_SOC)
+     * are both tasks, and the cooperative scheduler runs each to completion,
+     * so they cannot interleave - no critical section is needed here.
+     * This would have to change if an ISR ever set the flag. */
+    uint8_t fresh = s_voltage_fresh;
+
+    s_voltage_fresh = 0;
+    return fresh;
 }
 
 void BMS_Data_GetSnapshot(BMS_Snapshot_t *out)

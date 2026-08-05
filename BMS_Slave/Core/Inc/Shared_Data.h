@@ -54,7 +54,20 @@ void BMS_Data_SetTemp(float temp_c, uint8_t fault_bits);         // Task_Tempera
 // Goi tu ISR CAN RX (BMS_CAN.c).
 void BMS_Data_SetCurrent(float current_a);                       // CAN RX ISR
 
+// SOC da tinh xong, 0..100. Goi tu Task_SOC.
+void BMS_Data_SetSoc(uint8_t soc_pct);                           // Task_SOC
+
 // --- Consumer ---
 void BMS_Data_GetSnapshot(BMS_Snapshot_t *out);
+
+// Tra 1 VA XOA co neu co mau dien ap MOI ke tu lan goi truoc, nguoc lai tra 0.
+// Co duoc bat tu dong ben trong BMS_Data_SetVoltage().
+//
+// Kalman chi duoc phep Update bang ap TUOI: hieu chinh bang mau ap cu tung la
+// mot loi thiet ke that (xem PROJECT_BRIEF muc 2). Ap ve moi 50 ms con Predict
+// chay moi 5 ms, nen 10 lan Predict moi co 1 lan Update.
+//
+// Goi tu Task_SOC.
+uint8_t BMS_Data_TakeVoltageFresh(void);                         // Task_SOC
 
 #endif /* SHARED_DATA_H */

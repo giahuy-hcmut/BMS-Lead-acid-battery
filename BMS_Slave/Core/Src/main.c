@@ -28,6 +28,7 @@
 #include "Task_CAN.h"
 #include "Task_Temperature.h"
 #include "Task_Sleep.h"
+#include "Task_SOC.h"
 #include "ds18b20.h"
 #include "BMS_ADC.h"
 #include "Board_Config.h"
@@ -134,6 +135,11 @@ int main(void)
 
   // 2. Thêm Task Nhiệt độ (Chạy lặp mỗi 1000ms, khởi động chệch đi 10ms để né Task Áp)
   SCH_Add_Task(Task_Temperature_Run, 10, 1000);
+
+  // 3. Thêm Task SOC (Kalman). Dùng TASK_SOC_PERIOD_MS để chu kỳ đăng ký
+  //    và dt bên trong Task_SOC luôn khớp nhau.
+  SCH_Add_Task(Task_SOC_Run, 0, TASK_SOC_PERIOD_MS);
+
   //SCH_Add_Task(Task_Sleep_Run, 0, 1000);
   /* USER CODE END 2 */
 
