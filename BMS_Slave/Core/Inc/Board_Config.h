@@ -31,14 +31,29 @@
 // ==========================================
 // NGUONG BAO VE (PROTECTION LIMITS)
 // ==========================================
-// NOTE: carried over UNCHANGED from the old Shared_Data.h so that this
-// refactoring step cannot alter behaviour. Revisited in step 9 against
-// the CSB EVX12200 datasheet:
-//   - datasheet cutoff is 10.5 V, so 9.00 V discharges too deep
-//   - 12.7 V will trip while charging; the real charge voltage must be
-//     read from the datasheet, not guessed
-#define THRESHOLD_OVER_VOLT     12.7f   // Qua ap (V)        - TODO step 9
-#define THRESHOLD_UNDER_VOLT    9.00f   // Sut ap (V)        - TODO step 9
-#define THRESHOLD_OVER_TEMP     60.0f   // Qua nhiet do (C)
+// Generic 12 V lead-acid AGM limits, deliberately NOT tied to one part number
+// since the pack is expected to change. They match the common market band, and
+// also the CSB EVX12200 datasheet currently on the bench (rev RA240531):
+//
+//   cycle charge voltage   14.4 - 14.8 V typical  (CSB: 14.4 - 15.0 V @25C)
+//   final discharge (F.V)  10.5 V = 1.75 V/cell   (the 20 Ah / 20 hr rating point)
+//   operating temperature  up to 50 C on discharge
+//
+// Over-voltage trips ABOVE the charge band: the old 12.7 V sat below even the
+// minimum charge voltage, so it raised a fault for the whole charge cycle.
+#define THRESHOLD_OVER_VOLT     15.00f  // Qua ap (V)
+
+// The old 9.00 V allowed a much deeper discharge than any AGM datasheet does.
+//
+// KNOWN LIMITATION (step 9b, needs the master's current frame): this compares
+// the TERMINAL voltage, while 10.5 V is a resting figure. At 100 A the I*R drop
+// is 100 * 13.5 mOhm = 1.35 V, so a battery resting at 11.85 V reads 10.5 V
+// under load and trips at ~17% SOC. The fix is to compare the IR-compensated
+// value, V + I*R0, which needs the current now arriving over CAN.
+#define THRESHOLD_UNDER_VOLT    10.50f  // Sut ap (V)
+
+// Datasheet discharge limit is 50 C. Note the DS18B20 reads the CASE, and the
+// core runs hotter under load, so this is not a conservative figure.
+#define THRESHOLD_OVER_TEMP     50.0f   // Qua nhiet do (C)
 
 #endif /* BOARD_CONFIG_H */
