@@ -24,18 +24,28 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
 - CAN 500kbps. Slave ID 0x103–0x107 (master map idx = id − 0x103,
   TOTAL_PACKS=5). Slave gửi frame: byte0-1 áp×100, byte2-3 dòng×100,
   byte4 SOC, byte5 nhiệt+40, byte6 cờ lỗi; chu kỳ 1000ms.
-- Thiết kế ĐÃ CHỐT (chưa code): master phát dòng qua frame **0x100**
-  (gộp luôn vai trò heartbeat — slave thức khi nhận 0x100, đọc dòng
-  byte0-1 int16 A×100), chu kỳ 5ms/200Hz. Không còn heartbeat riêng.
-  Slave sleep (WFI) sau 5s không nhận 0x100.
-- Hiện trạng firmware: áp ĐÃ BỎ STUB — BMS_ADC.c đọc ADC thật (100 mẫu)
-  + cầu phân áp 33k/9.1k + calib 2 điểm CALIB_K/CALIB_B (đang K=1,B=0,
-  CHỜ đo VOM 2 mốc để điền per-slave). Biến debug g_dbg_v_computed /
-  g_dbg_adc_avg cho Live Expressions. Nhiệt vẫn stub `return 30`
-  (ds18b20.c). Quy trình calib: build K=1/B=0 → Live Expr xem
-  g_dbg_v_computed → đo VOM 2 mốc → K=(V2-V1)/(Vt2-Vt1), B=V1-K*Vt1 →
-  điền BMS_ADC.h. Calib 2 điểm ROBUST cả khi R danh nghĩa lệch R thật
-  (vẫn tuyến tính nên K,B bù được).
+- **ĐÃ CODE + ĐÃ VERIFY TRÊN PHẦN CỨNG (2026-08-06):** master phát dòng qua
+  frame **0x100** (gộp luôn vai trò heartbeat — slave thức khi nhận 0x100),
+  chu kỳ **5ms/200Hz**, `DLC=2`. Không còn heartbeat riêng.
+  Quy ước payload CHỐT cho **cả hai chiều**: **`int16` bù 2, MSB trước,
+  đơn vị A×100** — giống byte 2-3 của frame slave. Master clamp ±320A
+  trước khi scale (int16 tối đa ±327.67A, tràn sẽ đảo dấu).
+  Slave sleep (WFI) sau 5s không nhận 0x100 — Task_Sleep ĐÃ BẬT trong main.c.
+  Verify: giá trị test 12.34A tới slave **chính xác**; Kalman ổn định ở
+  innovation 0.34mV (chứng minh cả chuỗi encode→bus→ISR→kho→R0 bù nhiệt→OCV).
+- Hiện trạng firmware slave: **KHÔNG CÒN STUB NÀO**.
+  - Áp: BMS_ADC.c đọc ADC thật (100 mẫu) + cầu phân áp 33k/9.1k +
+    calib 2 điểm. **Chỉ SLAVE_INDEX=0 đã đo** (K=0.971, B=0.470);
+    slave 1-4 vẫn K=1/B=0 → PHẢI đo VOM và điền.
+  - Nhiệt: DS18B20 đọc thật. Biên timing khe đọc bit đã nới
+    (`delay_us(10)`→`5`, lấy mẫu ~7µs thay vì ~12µs trong cửa sổ 15µs) vì
+    ISR CAN ~4µs sẽ chen vào khi master phát 200Hz.
+  - Dòng: nhận từ 0x100, ISR giải mã rồi `BMS_Data_SetCurrent()`.
+  - SOC: Kalman chạy thật (xem mục 2).
+  - Biến debug `g_dbg_v_computed` / `g_dbg_adc_avg` cho Live Expressions.
+  - Quy trình calib: build K=1/B=0 → Live Expr xem `g_dbg_v_computed` →
+    đo VOM 2 mốc → K=(V2-V1)/(Vt2-Vt1), B=V1-K*Vt1 → điền BMS_ADC.h.
+    Calib 2 điểm ROBUST cả khi R danh nghĩa lệch R thật.
 - **KIẾN TRÚC PHẦN CỨNG (4 khối, thầy chốt — đang refactor):**
   - **Khối THU THẬP (×5, mỗi bình 1 bộ = slave):** STM32F103 + ADuM1201
     (cách ly galvanic 2 kênh cho TXD/RXD của CAN — bắt buộc vì pack nối
@@ -64,8 +74,7 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   (60A) — nếu không sẽ CHẶN NHẦM dòng thật 100A. Dòng chạy như nhau qua
   mọi bình nối tiếp (100A/20Ah = 5C — cao, ghi chú cho HPPC/nhiệt).
 - Cầu phân áp đo áp: ĐÃ CHỐT R1=33kΩ, R2=9.1kΩ GIỐNG cả 5 slave (tỉ lệ
-  0.2162: 14V→3.03V; R_source 7.13kΩ). CHƯA nhập code (BMS_ADC.h vẫn giá
-  trị cũ per-slave 46.5k/9.75k... — áp đang stub nên chưa ảnh hưởng).
+  0.2162: 14V→3.03V; R_source 7.13kΩ). **ĐÃ nhập code** trong BMS_ADC.h.
 - **BẢN ĐỒ CHÂN STM32F103C8T6 (slave) — đọc từ firmware:**
   - Tín hiệu: PB1 = đo áp bình (ADC1_IN9, cầu phân áp) · PB7 = DS18B20
     nhiệt (1-Wire, open-drain, dùng TIM4 làm delay µs) · PB8 = CAN_RX ·
@@ -92,7 +101,23 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
 - **MULTIRATE** (quyết định quan trọng): `SOC_Kalman_Predict(I, dt)` chạy
   5ms theo dòng; `SOC_Kalman_Update(V, I, T)` CHỈ chạy khi có mẫu áp MỚI
   (50ms). Không bao giờ hiệu chỉnh bằng áp cũ (từng là lỗi thiết kế,
-  đã sửa). Trên STM32 sẽ dùng cờ `voltage_fresh`.
+  đã sửa). Trên STM32 dùng cờ `voltage_fresh` — **ĐÃ CODE** trong kho
+  (`BMS_Data_TakeVoltageFresh()` đọc-và-xoá; cờ tự bật trong `SetVoltage`).
+- **CẢ HAI nửa chạy trong CÙNG task `Task_SOC_Run`**, main context. Lý do:
+  scheduler hợp tác run-to-completion nên không ai cắt ngang được `kf`.
+  Nếu để Predict trong ISR CAN thì nó sẽ phá ma trận P giữa lúc Update
+  đang ghi → P mất tính xác định dương → filter phân kỳ / NaN.
+- **`dt` ĐO THẬT bằng `HAL_GetTick()`, không lấy theo chu kỳ đăng ký.**
+  `SCH_Update()` chỉ set `RunMe` cho node ĐẦU nên tối đa 1 task được
+  dispatch mỗi tick; Task_SOC xin mỗi tick nên MẤT nhịp khi task khác tới
+  hạn (~22/200 tick). `dt` cứng 5ms sẽ làm Coulomb đếm thiếu ~11% — sai số
+  hệ thống, và `SCH_GetOverrunCount()` KHÔNG bắt được (instance nạp lại
+  luôn có RunMe=0). Tổng các `dt` đo được thì bằng đúng thời gian thực trôi.
+- Timeout dòng: không nhận 0x100 trong `CURRENT_TIMEOUT_MS = 100` →
+  ép `current = 0` (ghi cả vào kho để byte 2-3 frame nhất quán). 20 frame
+  liên tiếp mới kích; sai số nếu tích phân thêm 100ms @100A = 0.014%.
+- Init: `SOC_Kalman_Init()` gọi ở lần đầu có cờ áp TƯƠI (không gọi trong
+  `main()` vì lúc đó áp còn 0.0 → đảo OCV ra SOC = 0%).
 - Nhiệt độ: R0 hiệu chỉnh tuyến tính R0·(1+0.01·(25−T)) (Mức B).
 - 4 lớp phòng vệ nhiễu:
   1. Sanity: |I|>60A hoặc NaN → giữ giá trị dòng trước.
@@ -100,11 +125,26 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
      sụt (sag < 0.3×I·R0) → dòng nói dối → ép I=0. KHÔNG áp cho regen
      (I<0) vì V_RC chưa tan làm phép so OCV sai → từng gây gai SOC mỗi
      lần phanh (BUG đã tìm ra nhờ soi đồ thị, đã sửa + test hồi quy).
-  3. Innovation gating: |innov| > 3√S → bỏ update.
+  3. Innovation gating: |innov| > 3√S → bỏ update. **Cài dưới dạng SO BÌNH
+     PHƯƠNG** `innov² > 3²·S` (tương đương vì hai vế không âm và S>0 luôn,
+     do KF_R_MEAS>0). Mục đích: không kéo libm vào firmware — đo được là
+     **tiết kiệm 308 byte flash + 392 byte RAM** trên F103, và bỏ một lời
+     gọi softfloat mỗi Update. RAM là tài nguyên khan (20KB).
   4. Rn + K<1 làm mượt nhiễu áp.
-- Bias cảm biến dòng là VIỆC CỦA MASTER (auto-zero ACS758 lúc nghỉ —
+- Bias cảm biến dòng là VIỆC CỦA MASTER (auto-zero lúc nghỉ —
   đã cam kết kiến trúc, CHƯA code). Slave nhận dòng sạch → 2-state đủ,
   không cần 3-state ước lượng bias.
+- **Đo được trên phần cứng về độ nhạy bias** (dùng giá trị test cố định):
+  bias dòng **+12.34A** gây lệch SOC **+28%** (36%→64%). Cơ chế: filter
+  suy "đang rút 12A mà áp vẫn 12.08V ⇒ OCV thật = 12.08 + I·R0 + V_RC
+  = 12.44V ⇒ bình đầy hơn". Đúng vật lý, sai vì dòng là giả. Số liệu tốt
+  cho báo cáo. Validator #4 KHÔNG bắt được vì filter đã hội tụ tới trạng
+  thái tự-nhất-quán (nó bắt dòng nói dối TỨC THỜI, không bắt bias HẰNG).
+- **Tương quan P[0][1]: dòng HẰNG không tách được 2 trạng thái.** Đo thật:
+  ρ = 0.972 khi I=0, **tăng** lên 0.987 khi I=12.34A hằng. Vì với I hằng
+  thì cả soc và v_rc vẫn chỉ ảnh hưởng qua một con số là điện áp. Chỉ dòng
+  BIẾN THIÊN mới tách (soc theo tích phân, v_rc theo động học RC). ⇒ phép
+  kiểm ρ cần chu trình lái, không phải tải đứng yên.
 - Triết lý trình bày (trung thực): giá trị của KF là ĐỘ BỀN (hội tụ từ
   init sai, sai số bị chặn, chịu bias/nhiễu/pin chai) — KHÔNG phải "luôn
   chính xác hơn CC". CC lý tưởng (init đúng + dòng sạch) đạt 0.47%;
@@ -114,10 +154,16 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
 ## 3. KIỂM THỬ & MÔ PHỎNG (đã làm, PC-only, không cần phần cứng)
 
 - Vị trí: `BMS_Slave/UnitTest/`. Cấu trúc:
-  - `src/SOC_Kalman.c|.h` — module THẬT (thuần C, không HAL; sẽ copy
-    nguyên vào Core/ ở bước tích hợp).
-  - `test/test_SOC_Kalman.c` — Unity, **18 test**, coverage **100% line
-    + 100% branch** (gcov). Test dùng macro KF_OCV_* (không hardcode áp).
+  - ⚠️ **`SOC_Kalman.c|.h` ĐÃ DỜI sang `BMS_Slave/Core/`** (Inc/ và Src/).
+    Chỉ còn **MỘT bản duy nhất** — `run.sh` trỏ `-I ../Core/Inc` và
+    `../Core/Src/SOC_Kalman.c`. Nghĩa là **bộ test biên dịch đúng file mà
+    firmware nạp lên chip**. TUYỆT ĐỐI không tạo bản copy thứ hai: sửa
+    tham số sau HPPC ở một bản sẽ làm test kiểm một filter khác với filter
+    đang chạy.
+  - `test/test_SOC_Kalman.c` — Unity, **20 test**, coverage **100% line
+    + 100% branch + 100% calls** (gcov). Test dùng macro KF_OCV_*
+    (không hardcode áp). Vẫn PASS sau khi dời file và sau khi đổi cổng
+    gating sang so bình phương.
   - `sim/simulate.c` — mô phỏng: ECE-15 → động lực xe → dòng → pin ảo
     (plant) → 3 bộ ước lượng (CC / Hybrid / KF) → CSV 9 cột:
     time,speed_kmh,i_true,i_meas,v_meas,true_soc,cc_soc,hybrid_soc,kf_soc
@@ -182,9 +228,13 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   3071.73, sai số áp <0.5%, có chương Range. KHÔNG có: firmware C, unit
   test, coverage, phân tích cảm biến datasheet, baseline Hybrid, ma trận
   cô lập yếu tố.
-- Ta HƠN: code C thật nạp chip, 18 test + 100% coverage, ma trận cô lập
-  5 kịch bản, 2 baseline (CC + Hybrid), mọi số truy vết datasheet/chuẩn,
-  câu chuyện tìm-bug-sửa-regression thật, multirate đúng nguyên lý.
+- Ta HƠN: code C **thật đã nạp chip và verify** (SOC khớp lý thuyết, dư
+  innovation 0.34mV), 20 test + 100% coverage **kiểm đúng file firmware
+  nạp**, ma trận cô lập 5 kịch bản, 2 baseline (CC + Hybrid), mọi số truy
+  vết datasheet/chuẩn, câu chuyện tìm-bug-sửa-regression thật, multirate
+  đúng nguyên lý, **giao thức CAN 2 chiều chạy thật giữa 2 MCU khác họ**,
+  và số đo thực nghiệm về độ nhạy bias (+12.34A → +28% SOC) cùng tương
+  quan P chứng minh cần dòng BIẾN THIÊN mới tách được 2 trạng thái.
 - Ta THUA (đã vá phần lớn): mô hình pin đơn giản hơn (tuyến tính + hằng
   số vs bảng 2D — chờ HPPC GĐ8); R1/C1 giờ theo tỷ lệ IEEE (không còn
   tự chế); đã có 2 chu trình (ECE-15 + DST) + Monte Carlo 30 seed +
@@ -197,34 +247,101 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
 ## 5. LỘ TRÌNH (GĐ = giai đoạn)
 
 - GĐ0 môi trường test ✅ · GĐ1 module Kalman ✅ · GĐ2 unit test ✅ ·
-  GĐ3 mô phỏng + ma trận ✅ (đang mở rộng) · GĐ4 Frama-C (bonus, chưa) ·
-  GĐ5 tích hợp firmware STM32 (Task_SOC.c + nhận dòng CAN + tick 5ms —
-  chưa, KHÔNG cần xe, chỉ cần bench) · GĐ6 bench test · GĐ7 master:
-  phát dòng 0x100 5ms + auto-zero + SOC_min/max + cảnh báo lệch >5% ·
+  GĐ3 mô phỏng + ma trận ✅ · GĐ4 Frama-C (bonus, chưa) ·
+  **GĐ5 tích hợp firmware STM32 ✅ (2026-08-06)** — Task_SOC.c chạy thật,
+  nhận dòng CAN, tick 5ms, verify trên chip · GĐ6 bench test (CHỜ mua
+  shunt + contactor) · **GĐ7 master: phát dòng 0x100 5ms ✅** — còn
+  auto-zero + SOC_min/max + cảnh báo lệch >5% + gỡ Coulomb cũ ·
   GĐ8 pin thật: HPPC đo R0/R1/C1(SOC,T) + xả tham chiếu làm ground
   truth + đo nhiễu ADC thật.
 - Người dùng KHÔNG có xe → chiến lược: dồn bằng chứng vào mô phỏng theo
   chuẩn + bench 400V; GĐ5-8 vẫn khả thi không cần xe.
 
-## 6. TRẠNG THÁI: MÔ PHỎNG ĐÃ ĐÓNG BĂNG — VIỆC KẾ TIẾP
+## 5b. KIẾN TRÚC FIRMWARE SLAVE (refactor xong 2026-08-05/06)
 
-Gói tinh chỉnh 7 bước ĐÃ XONG HẾT (Q/R tune, clamp mềm, R1/C1 IEEE,
-ma trận + đối chứng + metric áp, test #17 ECE-15, DST, Monte Carlo).
-Kết quả cuối ở mục 3. KHÔNG đổi cấu hình mô phỏng nữa trừ khi có số
-đo thật (GĐ8).
+Đã làm 6 bước đóng gói + 1 bước sửa scheduler. Nguyên tắc CHỐT:
 
-Việc kế tiếp theo thứ tự ưu tiên:
-1. **GĐ5 — tích hợp firmware slave** (không cần xe): copy
-   SOC_Kalman.c/.h vào Core/; viết Task_SOC.c (Predict 5ms + Update khi
-   cờ voltage_fresh; xuất qua SOC_Kalman_GetSOC()); BMS_CAN.c nhận dòng
-   0x100 (int16 byte0-1, A×100); Task_Voltage bật cờ; Scheduler tick
-   10→5ms; main.c đăng ký. Mục tiêu: build sạch STM32CubeIDE.
-2. GĐ7 — master: gửi 0x100+dòng 5ms, AUTO-ZERO ACS758 (cam kết kiến
-   trúc), SOC_min/max + cảnh báo lệch >5%, gỡ Coulomb cũ ở Task_Current.
-3. GĐ8 — bench 400V: HPPC (R0/R1/C1 theo SOC), xả tham chiếu (ground
-   truth thật), đo variance nhiễu ADC (thay KF_R_MEAS), xác nhận OCV
-   đầy/cạn pin thật.
-4. Bonus nếu dư thời gian: Frama-C (GĐ4), Kalman 3-state ước lượng bias.
+- **`.h` KHÔNG chứa `extern <biến>`.** Trạng thái đo nằm trong
+  `Shared_Data.c` dạng `static volatile`, ghi qua `BMS_Data_Set*()`
+  (mỗi đại lượng MỘT chủ), đọc qua `BMS_Data_GetSnapshot()` trả bản copy
+  **theo giá trị**. `myBMS` và `lastHeartbeatTick` đã XOÁ hẳn.
+  Test âm đã chứng minh: `extern` từ file khác → **lỗi lúc LINK**.
+- **KHÔNG dùng mutex.** Scheduler hợp tác run-to-completion ⇒ task-với-task
+  không thể chồng nhau ⇒ không có race. Mutex ở đây còn **deadlock** vì
+  không có context switch để chủ mutex chạy tiếp. Chỗ duy nhất cần bảo vệ
+  là **task↔ISR**, dùng critical section `__get_PRIMASK`/`__set_PRIMASK`
+  (KHÔNG dùng `__enable_irq()` trần — phá lồng ngắt).
+- **Kho chỉ GIỮ, không TÍNH.** ISR CAN tự scale `raw * 0.01f` rồi mới gọi
+  `BMS_Data_SetCurrent()`. Dùng nhân thay chia (softfloat mul rẻ hơn div
+  ~2.5×) để ISR nhẹ.
+- **Handle HAL thuộc driver.** `main()` nộp một lần: `BMS_ADC_Init(&hadc1)`,
+  `BMS_CAN_Init(&hcan)`. Tầng Task không còn kiểu HAL nào.
+  `Task_CAN.c`: **0 lời gọi `HAL_`**. LED qua `BSP_Led.c` (che cả cực tính
+  active-low của PC13).
+- **`Board_Config.h`**: `SLAVE_INDEX` (0..4) là **DÒNG DUY NHẤT** phải sửa
+  khi nạp board khác. `CAN_SLAVE_ID`, `CALIB_K/B`, `start_delay` đều suy ra.
+  Có `#error` chặn index ngoài dải.
+- **Scheduler** (`SCH_TICK_MS = 5`): đã sửa 7 lỗi — `static volatile` cho
+  `SCH_tasks_G`/`Head_Index`; chặn `PERIOD_MS % SCH_TICK_MS != 0` (chia
+  nguyên từng biến `PERIOD_MS=5` thành `Period=0` → Dispatch coi là one-shot
+  rồi XOÁ); `RunMe -= 1` vào critical section cùng lúc pop Head; nạp lại
+  lịch TRƯỚC khi chạy thân task; kiểm biên trước khi index; PRIMASK
+  save/restore; `SCH_GetOverrunCount()` đếm trượt deadline (đo được **0**).
+- **Ngưỡng bảo vệ** (`Board_Config.h`, dải AGM 12V phổ thông):
+  over-volt **15.00V** (cũ 12.7 thấp hơn cả mức sạc 14.4 → báo lỗi suốt
+  lúc sạc), under-volt **10.50V** (=1.75 VPC), over-temp **50.0°C**
+  (datasheet giới hạn xả 50°C; cũ 60 nằm ngoài dải).
+- Biến xem trong Live Expressions: `s_voltage_v`, `s_temp_c`, `s_current_a`,
+  `s_soc_pct`, `s_faults_volt`, `s_faults_temp`, `s_overrun_count`,
+  `'Task_SOC.c'::s_kf`, `'BMS_CAN.c'::s_last_rx_tick`. Là `static` nên gõ
+  `'file.c'::ten` nếu CubeIDE không giải được.
+
+## 6. TRẠNG THÁI & VIỆC KẾ TIẾP
+
+Mô phỏng ĐÓNG BĂNG (kết quả mục 3, không đổi trừ khi có số đo thật GĐ8).
+GĐ5 XONG. A2 (master phát dòng) XONG.
+
+### 🔴 Việc quan trọng nhất còn lại — KHÔNG cần mua gì
+
+**SOC Kalman của slave hiện KHÔNG tới được đâu cả.**
+`BMS_Master/src/Task_CAN.cpp::readMessage()` chỉ giải mã `data[0..1]` (áp),
+`data[5]` (nhiệt), `data[6]` (cờ lỗi) — **BỎ QUA `data[2..3]` (dòng) và
+`data[4]` (SOC)**. Đồng thời `Task_Current.cpp:92-101` vẫn tính SOC bằng
+Coulomb cũ rồi ghi `globalPacks[0].soc`. Nên web dashboard đang hiện SOC
+Coulomb của master, không phải Kalman của slave.
+
+1. Master giải mã `data[4]` (SOC) + `data[2..3]` (dòng) từ frame slave.
+2. Gỡ Coulomb SOC cũ ở `Task_Current.cpp` — hết hai nguồn SOC đánh nhau.
+3. Sửa data race: `Task_Current.cpp:101` ghi `globalPacks[0].soc` **KHÔNG
+   mutex**, trong khi `System_Get_Snapshot()` đọc CÓ mutex.
+
+### Còn lại theo mức
+
+- 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo).
+- 🟠 **9b**: under-volt bù `I·R0`. Ngưỡng 10.5V là số LÚC NGHỈ; ở 100A sụt
+  `I·R = 1.35V` nên bình đang nghỉ 11.85V sẽ đọc 10.5V dưới tải → **ngắt
+  oan ở ~17% SOC**. Sửa: so `V + I·R0`. Đã có dòng nên làm được.
+- 🟠 **MCP2515 qua SPI → CAN xe** (chưa có dòng code nào). Cần module.
+- 🟡 Gói nhiệt độ: cold boot đọc +85°C (mặc định scratchpad) → kích
+  ERROR_OVER_TEMP ở frame đầu; lọc dải hợp lệ (0.0 và 85.0 hiện lọt);
+  `uint16_t Temp` → `int16_t` cho nhiệt âm. **Người dùng đã chọn BỎ QUA.**
+- 🟡 ADC timeout: mẫu fail không cộng nhưng vẫn chia `NUM_SAMPLES` → áp
+  thấp giả. **Người dùng đã chọn BỎ QUA.**
+- 🟡 Mạng: `AutoRetransmission=DISABLE` (one-shot, mất frame khi thua
+  arbitration — master ID 0x100 < slave nên master luôn thắng); không kiểm
+  return `BMS_CAN_Transmit`; filter nhận MỌI ID thay vì chỉ 0x100; thứ tự
+  `HAL_CAN_Start` trước `ConfigFilter`. **Đã hoãn.**
+- 🟡 Byte 7 frame slave còn trống — chở được `SCH_GetOverrunCount()`.
+- 🟡 GĐ8 bench: HPPC (R0/R1/C1 theo SOC), xả tham chiếu, đo variance nhiễu
+  ADC thật (thay KF_R_MEAS), xác nhận OCV đầy/cạn.
+- 🟡 Bonus: Frama-C (GĐ4), Kalman 3-state ước lượng bias.
+
+### ⚠️ Ghi chú hệ thống, KHÔNG phải lỗi firmware
+
+Datasheet CSB EVX12200 giới hạn **Max Charge Current = 6.00 A**. Regen của
+xe (4 motor × 25A) có thể đẩy về **~100A** — gấp **16 lần**. Phải chặn ở
+tầng điều khiển motor hoặc chọn bình khác. BMS báo bình thường mà bình vẫn
+bị phá.
 
 ## 7. QUY ƯỚC & NGUYÊN TẮC LÀM VIỆC VỚI NGƯỜI DÙNG NÀY
 
@@ -244,7 +361,12 @@ Việc kế tiếp theo thứ tự ưu tiên:
 
 ## 8. FILE QUAN TRỌNG
 
-- `BMS_Slave/UnitTest/src/SOC_Kalman.c|.h` — module Kalman (bản chốt).
+- `BMS_Slave/Core/Src/SOC_Kalman.c` + `Core/Inc/SOC_Kalman.h` — module
+  Kalman (bản chốt, **MỘT bản duy nhất**, unit test trỏ vào đây).
+- `BMS_Slave/Core/Src/Task_SOC.c` + `Core/Inc/Task_SOC.h` — task chạy Kalman.
+- `BMS_Slave/Core/Inc/Board_Config.h` — `SLAVE_INDEX` + CAN id + ngưỡng.
+- `BMS_Slave/Core/Inc/Shared_Data.h` + `Src/Shared_Data.c` — KHO dữ liệu
+  (tên file là di sản; nó KHÔNG còn là global store, xem mục 5b).
 - `BMS_Slave/UnitTest/test/test_SOC_Kalman.c` — 20 test.
 - `BMS_Slave/UnitTest/sim/simulate.c` — mô phỏng ECE-15/DST (công tắc
   DRIVE_CYCLE) + plant + 3 estimator; seed Monte Carlo qua argv.
