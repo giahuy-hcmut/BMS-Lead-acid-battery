@@ -23,7 +23,11 @@ public:
     // Hàm đọc tin nhắn (Non-blocking)
     // Trả về true nếu có tin, false nếu không
     bool readMessage(BMS_Message_t &msgOut);
-    void sendHeartbeat();
+
+    // Gửi frame CAN_MASTER_ID chở dòng pack.
+    //   current_a : ampe, >0 = XẢ (quy ước chốt cho cả hệ)
+    // Đóng gói: int16 bù 2, MSB trước, A x100 - giống byte 2-3 frame slave.
+    void sendCurrentFrame(float current_a);
 };
 
 // Hàm Wrapper cho FreeRTOS gọi

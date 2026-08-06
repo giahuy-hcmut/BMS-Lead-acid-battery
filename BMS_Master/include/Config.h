@@ -12,9 +12,13 @@
 #define PIN_CAN_RX              GPIO_NUM_17
 #define CAN_BAUD_RATE           500000
 #define CAN_QUEUE_LENGTH        20      // Chiều dài bộ đệm tin nhắn CAN
-#define CAN_HEARTBEAT_ID        0x100   // ID frame heartbeat gửi xuống slave
-#define CAN_HEARTBEAT_INTERVAL  1000    // Chu kỳ gửi heartbeat (ms)
-#define CAN_TX_TIMEOUT_MS       10      // Timeout gửi/nhận CAN frame (ms)
+// Frame master -> slave. Chở dòng điện pack VÀ đóng luôn vai heartbeat: slave
+// thức khi nhận được nó, ngủ sau 5 s không thấy. Không có frame heartbeat
+// riêng. Cùng tên CAN_MASTER_ID với Board_Config.h bên slave.
+#define CAN_MASTER_ID           0x100
+#define CAN_MASTER_INTERVAL_MS  5       // 200 Hz - nhịp Predict của Kalman bên slave
+#define CAN_TX_TIMEOUT_MS       10      // Timeout twai_transmit (ms)
+#define CAN_RX_POLL_TIMEOUT_MS  0       // twai_receive KHÔNG chặn - xem Task_CAN.cpp
 
 // --- 3. CẤU HÌNH MÀN HÌNH LCD ---
 #define PIN_I2C_SDA             21
@@ -47,7 +51,6 @@
 #define VOLTAGE_SYS_MIN_VALID   5.0f     // Điện áp tối thiểu để xác nhận CAN đã gửi dữ liệu
 #define VOLTAGE_SYS_100_SOC     12.6f    // Điện áp khi bình đầy 100% (Khoảng 12.8V/bình)
 #define VOLTAGE_SYS_0_SOC       11.5f     // Điện áp khi bình cạn 0% (Khoảng 11.5V/bình)
-#endif
 
 // --- 8. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
 #define PIN_RELAY_CONTROL       26      // Chân xuất tín hiệu điều khiển Relay tổng
@@ -59,3 +62,5 @@
 #define MAX_DISCHARGE_CURRENT   50.0f   // Ngưỡng quá dòng (A) - Chỉnh theo công suất Motor
 #define MIN_SOC_SHUTDOWN        5       // Mức % SOC thấp nhất cho phép chạy (Bảo vệ cạn bình)
 #define RECOVERY_SOC            10      // Mức % SOC an toàn để tự động đóng Relay trở lại (Hysteresis)
+
+#endif /* CONFIG_H */

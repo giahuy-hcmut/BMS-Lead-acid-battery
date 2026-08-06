@@ -49,6 +49,21 @@ void System_Update_Current(float current) {
     }
 }
 
+float System_Get_Current(void) {
+    static float s_cached = 0.0f;   /* only Task_CAN calls this */
+
+    /* Timeout 0: this sits on the 5 ms frame path and must never block.
+     * On contention keep the last known value rather than returning 0.0, so a
+     * busy mutex cannot inject a spurious "0 A" into every slave's filter.
+     * globalPacks[0] because System_Update_Current() writes the same value to
+     * all packs - the same current flows through batteries in series. */
+    if (xSemaphoreTake(dataMutex, 0) == pdTRUE) {
+        s_cached = globalPacks[0].current;
+        xSemaphoreGive(dataMutex);
+    }
+    return s_cached;
+}
+
 // --- HÀM ĐỌC AN TOÀN (Dành cho Task Hiển thị) ---
 // --- HÀM ĐỌC AN TOÀN (Dành cho Task Hiển thị) ---
 void System_Get_Snapshot(BMS_Pack_State *snapshotArray) {

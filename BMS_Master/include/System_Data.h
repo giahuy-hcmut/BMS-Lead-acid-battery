@@ -60,4 +60,8 @@ void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp, uint8_t sta
 void System_Update_Current(float current);
 void System_Get_Snapshot(BMS_Pack_State *snapshotArray);
 
+// Dòng pack, dạng scalar. Nhẹ và KHÔNG CHẶN - dùng cho đường phát frame 5 ms.
+// System_Get_Snapshot() khoá mutex rồi lặp cả 5 pack, quá nặng cho đường đó.
+float System_Get_Current(void);
+
 #endif

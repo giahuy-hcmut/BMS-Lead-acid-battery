@@ -32,7 +32,7 @@ bool CAN_Manager::init() {
     return false;
 }
 
-void CAN_Manager::sendHeartbeat() {
+void CAN_Manager::sendCurrentFrame(float current_a) {
     if (!isReady) return;
 
     twai_status_info_t status;
@@ -50,9 +50,20 @@ void CAN_Manager::sendHeartbeat() {
         return;
     }
 
+    /* Clamp before scaling: int16 spans +/-327.67 A. A wild sensor reading
+     * would otherwise wrap sign and tell every slave the pack is charging
+     * while it is really being discharged - the SOC would climb under load
+     * with no fault raised anywhere. */
+    if (current_a >  320.0f) { current_a =  320.0f; }
+    if (current_a < -320.0f) { current_a = -320.0f; }
+
+    int16_t raw = (int16_t)lroundf(current_a * 100.0f);
+
     twai_message_t msg = {};
-    msg.identifier = CAN_HEARTBEAT_ID;
-    msg.data_length_code = 0;
+    msg.identifier = CAN_MASTER_ID;
+    msg.data_length_code = 2;                        /* was 0 - empty heartbeat */
+    msg.data[0] = (uint8_t)((raw >> 8) & 0xFF);      /* MSB first, matching   */
+    msg.data[1] = (uint8_t)(raw & 0xFF);             /* bytes 2-3 of a slave  */
     twai_transmit(&msg, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS));
 }
 
@@ -60,8 +71,12 @@ bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
     if (!isReady) return false;
 
     twai_message_t rx_msg;
-    // Chờ tối đa 10ms
-    if (twai_receive(&rx_msg, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS)) == ESP_OK) {
+    /* Non-blocking poll. A 10 ms blocking receive made this loop turn every
+     * ~11 ms - the slaves only send 5 frames per second, so the wait almost
+     * always ran to full timeout. A 5 ms master frame is then impossible, and
+     * it would have failed silently: the interval macro would say 5 while the
+     * bus showed 11. */
+    if (twai_receive(&rx_msg, pdMS_TO_TICKS(CAN_RX_POLL_TIMEOUT_MS)) == ESP_OK) {
         
         msgOut.can_id = rx_msg.identifier;
         
@@ -99,15 +114,17 @@ void Task_CAN_Run(void *pvParameters) {
     }
 
     BMS_Message_t tempMsg;
-    TickType_t lastHeartbeat = xTaskGetTickCount();
+    TickType_t lastFrame = xTaskGetTickCount();
 
     while (1) {
         if (myCanBus.readMessage(tempMsg)) {
             xQueueSend(canQueue, &tempMsg, 0);
         }
-        if ((xTaskGetTickCount() - lastHeartbeat) >= pdMS_TO_TICKS(CAN_HEARTBEAT_INTERVAL)) {
-            if (webSlavesActive) myCanBus.sendHeartbeat();
-            lastHeartbeat = xTaskGetTickCount();
+        /* webSlavesActive stays: clearing it from the web UI is still the way
+         * to let the slaves fall asleep, since 0x100 doubles as heartbeat. */
+        if ((xTaskGetTickCount() - lastFrame) >= pdMS_TO_TICKS(CAN_MASTER_INTERVAL_MS)) {
+            if (webSlavesActive) myCanBus.sendCurrentFrame(System_Get_Current());
+            lastFrame = xTaskGetTickCount();
         }
         vTaskDelay(pdMS_TO_TICKS(1));
     }
