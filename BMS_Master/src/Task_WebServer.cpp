@@ -61,7 +61,14 @@ String WebServer_Manager::buildJsonString() {
     for(int i=0; i<TOTAL_PACKS; i++) {
         json += "{\"volt\":";
         json += String(snapPacks[i].voltage, 2);
-        
+
+        // SOC RIÊNG của từng bình, do bộ lọc Kalman chạy TRÊN CHÍNH SLAVE đó
+        // tính rồi gửi về ở byte 4. Đây mới là điểm của việc chạy 5 bộ lọc độc
+        // lập: thấy được bình NÀO đang yếu. Con số "soc" ở cấp hệ thống chỉ là
+        // min của 5 bình, không cho biết bình nào.
+        json += ",\"soc\":";
+        json += String(snapPacks[i].soc);
+
         // --- ĐÃ SỬA: Bổ sung temp và err cho JS đọc ---
         json += ",\"temp\":";
         json += String(snapPacks[i].temperature);

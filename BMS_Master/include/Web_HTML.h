@@ -284,9 +284,14 @@ const char index_html[] PROGMEM = R"rawliteral(
   function renderData(data) {
     document.getElementById('totalVolt').textContent = data.totalV.toFixed(2);
     document.getElementById('sysCurr').textContent   = data.sysI.toFixed(2);
-    document.getElementById('sysSOC').textContent    = data.soc + ' %';
+    // soc < 0 nghia la System_MinSoc() tra -1: co bình offline nen KHONG BIET
+    // binh mat tich co phai binh yeu nhat hay khong. Hien "--" thay vi doan.
+    var socKnown = (data.soc >= 0);
+    document.getElementById('sysSOC').textContent    = socKnown ? (data.soc + ' %') : '-- %';
     document.getElementById('sysPow').textContent    = (data.totalV * data.sysI).toFixed(1) + ' W';
-    document.getElementById('remainAh').textContent  = (data.soc / 100 * CAPACITY_AH).toFixed(1) + ' Ah';
+    document.getElementById('remainAh').textContent  = socKnown
+        ? ((data.soc / 100 * CAPACITY_AH).toFixed(1) + ' Ah')
+        : '-- Ah';
 
     var onlineVolts = data.packs.filter(function(p) { return p.online; }).map(function(p) { return p.volt; });
     if (onlineVolts.length >= 2) {
@@ -304,6 +309,9 @@ const char index_html[] PROGMEM = R"rawliteral(
       var stCls   = !p.online ? 'offline' : (hasErr ? 'error'  : 'online');
       var stText  = !p.online ? 'LOST'    : (hasErr ? 'ERROR'  : 'ONLINE');
       var voltStr = p.online ? p.volt.toFixed(2) : '--.-';
+      // SOC cua rieng binh nay, tu bo Kalman tren slave do. Binh offline thi so
+      // luu lai la so CU -> hien '--', cung cach doi xu nhu volt va temp.
+      var pSocStr = p.online ? (p.soc + ' %') : '--';
       var tempStr = p.online ? p.temp + '&#176;C' : '--';
       var errStr  = p.online ? ('0x' + p.err.toString(16).padStart(2,'0').toUpperCase()) : '--';
 
@@ -311,6 +319,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       html += '<div class="pack-num ' + numCls + '">' + pad(i + 1) + '</div>';
       html += '<div class="pack-volt">' + voltStr + '<sup>V</sup></div>';
       html += '<div class="pack-meta">';
+      html += '<div class="pack-meta-row">SOC: <span class="pack-meta-val">' + pSocStr + '</span></div>';
       html += '<div class="pack-meta-row">Temp: <span class="pack-meta-val">' + tempStr + '</span></div>';
       html += '<div class="pack-meta-row">Error: <span class="pack-meta-val">' + errStr + '</span></div>';
       html += '</div>';
