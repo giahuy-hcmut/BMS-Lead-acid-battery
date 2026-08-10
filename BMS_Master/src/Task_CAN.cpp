@@ -88,6 +88,18 @@ bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
             msgOut.voltage = 0.0f;
         }
 
+        /* Byte 4 = SOC (%) from the slave's Kalman filter.
+         *
+         * Bytes 2-3 carry the current and are deliberately NOT decoded: that is
+         * the master's OWN value coming back from frame 0x100, so reading it
+         * would create a second source of truth for something already known.
+         * Only worth decoding later as a loopback diagnostic. */
+        if (rx_msg.data_length_code >= 5) {
+            msgOut.soc = rx_msg.data[4];
+        } else {
+            msgOut.soc = 0;
+        }
+
         // BỔ SUNG: Giải mã Nhiệt độ (trừ đi 40 offset) và Mã lỗi
         if (rx_msg.data_length_code >= 7) {
             msgOut.temperature = (int8_t)rx_msg.data[5] - 40;

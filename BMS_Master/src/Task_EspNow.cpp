@@ -40,7 +40,9 @@ void EspNow_Manager::sendTelemetry() {
 
     outgoingData.totalVoltage = 0;
     outgoingData.systemCurrent = snapPacks[0].current; 
-    outgoingData.systemSOC = snapPacks[0].soc; // <--- THÊM SOC
+    // SOC he thong = min cua cac binh; -1 khi co slave offline.
+    // Tay cam se nhan -1 -> can hien "--" o firmware ben do.
+    outgoingData.systemSOC = System_MinSoc(snapPacks);
 
     for (int i = 0; i < TOTAL_PACKS; i++) {
         outgoingData.packVolts[i] = snapPacks[i].voltage;

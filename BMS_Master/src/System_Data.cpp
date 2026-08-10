@@ -26,18 +26,41 @@ void System_Data_Init() {
 }
 
 // --- HÀM GHI AN TOÀN (Dành cho Task Logic) ---
-void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp, uint8_t status) {
+void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp,
+                        uint8_t status, uint8_t soc) {
     int idx = can_id - CAN_BASE_ID;
-    
-    if (idx < 0 || idx >= TOTAL_PACKS) return;
+
+    /* Bounds check against the monitored count, not the array size: a slave
+     * beyond the configured count is still physically on the bus and still
+     * sends frames, and they must be ignored. */
+    if (idx < 0 || idx >= (int)System_GetPackCount()) return;
 
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
         globalPacks[idx].voltage = voltage;
         globalPacks[idx].temperature = temp; // Lưu nhiệt độ
         globalPacks[idx].status = status;    // Lưu mã lỗi
+        globalPacks[idx].soc = (int)soc;     // SOC Kalman tu slave
         globalPacks[idx].lastUpdate = millis();
         xSemaphoreGive(dataMutex);
     }
+}
+
+uint8_t System_GetPackCount(void) {
+    return TOTAL_PACKS;      /* runtime-configurable from the web UI later */
+}
+
+int System_MinSoc(const BMS_Pack_State *snaps) {
+    int lowest = 101;        /* above any valid SOC */
+
+    for (uint8_t i = 0; i < System_GetPackCount(); i++) {
+        if (!snaps[i].isConnected) {
+            return -1;       /* incomplete picture - see the header */
+        }
+        if (snaps[i].soc < lowest) {
+            lowest = snaps[i].soc;
+        }
+    }
+    return lowest;
 }
 
 void System_Update_Current(float current) {

@@ -40,9 +40,17 @@ void Terminal_Dashboard::printHeader(uint32_t uptime) {
     Serial.println("==========================================================");
     
     // --- IN THÔNG SỐ TỔNG (QUAN TRỌNG ĐỂ TEST SOC) ---
-    // localPacks[0].current và localPacks[0].soc chứa dữ liệu tổng của hệ thống
+    // localPacks[0].current là dòng TOÀN HỆ (cùng một dòng qua các bình nối tiếp).
+    // SOC thì KHÔNG: localPacks[i].soc là SOC riêng của bình i (Kalman trên slave),
+    // nên SOC hệ thống phải lấy qua System_MinSoc().
     Serial.printf(" SYSTEM VOLTAGE: %6.2f V  |  CURRENT: %6.2f A\n", totalVolt, localPacks[0].current);
-    Serial.printf(" SYSTEM SOC    : %3d %%       |  MODE   : TEST (2S)\n", localPacks[0].soc);
+    int sysSOC = System_MinSoc(localPacks);
+    if (sysSOC < 0) {
+        // Co slave offline -> khong biet binh mat tich co phai binh yeu nhat
+        Serial.printf(" SYSTEM SOC    :  --  %%       |  MODE   : TEST (2S)\n");
+    } else {
+        Serial.printf(" SYSTEM SOC    : %3d %%       |  MODE   : TEST (2S)\n", sysSOC);
+    }
     
     Serial.println("----------------------------------------------------------");
     Serial.println("| ID    | VOLTAGE | TEMP  | ERR  | STATUS      | UPDATED |");

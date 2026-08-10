@@ -15,7 +15,8 @@ void Logic_Manager::init() {
 }
 
 void Logic_Manager::processMessage(BMS_Message_t &msg) {
-    System_Update_Pack(msg.can_id, msg.voltage, msg.temperature, msg.status);
+    System_Update_Pack(msg.can_id, msg.voltage, msg.temperature,
+                       msg.status, msg.soc);
 }
 
 // Hàm cắt điện và in cảnh báo
@@ -49,6 +50,10 @@ void Logic_Manager::evaluateProtection() {
     BMS_Pack_State snaps[TOTAL_PACKS];
     System_Get_Snapshot(snaps);
 
+    /* Weakest battery limits a series pack. -1 means at least one slave is
+     * offline, so the picture is incomplete - see System_MinSoc(). */
+    int sysSoc = System_MinSoc(snaps);
+
     bool isSafe = true;
     const char* errorReason = "";
 
@@ -73,7 +78,7 @@ void Logic_Manager::evaluateProtection() {
     }
 
     // 3. Kiểm tra cạn kiệt năng lượng (Low SOC)
-    if (isSafe && snaps[0].soc < MIN_SOC_SHUTDOWN) {
+    if (isSafe && sysSoc >= 0 && sysSoc < MIN_SOC_SHUTDOWN) {
         isSafe = false;
         errorReason = "Battery Depleted (Low SOC)";
     }
@@ -86,8 +91,10 @@ void Logic_Manager::evaluateProtection() {
         // Nếu hệ thống đang bình thường TRỞ LẠI
         // (Chỉ cho phép mở lại Relay nếu SOC đã sạc lên mức an toàn, tránh bật tắt liên tục)
         if (isSystemLocked) {
-            if (snaps[0].soc >= RECOVERY_SOC) {
-                unlockSystem(); 
+            /* sysSoc == -1 keeps the relay open on purpose: do not re-energise
+             * while any battery is unmonitored. */
+            if (sysSoc >= RECOVERY_SOC) {
+                unlockSystem();
             }
         } else {
             // Khởi động trơn tru: Lần đầu tiên bật máy, nếu mọi thứ OK thì đóng Relay

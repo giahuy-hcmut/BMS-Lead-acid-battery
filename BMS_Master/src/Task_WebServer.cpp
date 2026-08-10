@@ -53,7 +53,7 @@ String WebServer_Manager::buildJsonString() {
 
     float totalV = 0;
     float sysI = snapPacks[0].current;
-    int sysSOC = snapPacks[0].soc; 
+    int sysSOC = System_MinSoc(snapPacks);   /* -1 = mot slave offline */
 
     String json = "{";
     
