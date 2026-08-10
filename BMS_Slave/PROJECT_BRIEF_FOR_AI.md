@@ -82,7 +82,11 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
     khi sleep).
   - Hệ thống: PA13/PA14 = SWDIO/SWCLK (nạp+debug, JTAG đã tắt → giải
     phóng PB3/PB4/PA15) · PD0/PD1 = thạch anh HSE.
-  - Nội (không ra chân): SysTick = tick scheduler (1ms → 10ms gọi
+  - **Debug timing (chỉ khi `DBG_TIMING` bật trong `Debug_Pins.h`):**
+    PA0=SysTick(1ms) · PA1=nhịp SCH(5ms) · PA2=Task_SOC · PA3=Task_Voltage ·
+    PA4=Task_CAN · PA5=Task_Temp. Comment `#define DBG_TIMING` là trả lại
+    6 chân này cho hệ (zero overhead).
+  - Nội (không ra chân): SysTick = tick scheduler (1ms → 5ms gọi
     SCH_Update) · TIM4 = delay µs cho DS18B20 · TIM2 = timer 1ms IRQ bật
     nhưng USER code TRỐNG → nghi mã chết legacy CubeMX, nên rà & gỡ (nhóm
     lỗi #2). ADC1 IRQ phục vụ đọc ADC.
@@ -108,11 +112,14 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   Nếu để Predict trong ISR CAN thì nó sẽ phá ma trận P giữa lúc Update
   đang ghi → P mất tính xác định dương → filter phân kỳ / NaN.
 - **`dt` ĐO THẬT bằng `HAL_GetTick()`, không lấy theo chu kỳ đăng ký.**
-  `SCH_Update()` chỉ set `RunMe` cho node ĐẦU nên tối đa 1 task được
-  dispatch mỗi tick; Task_SOC xin mỗi tick nên MẤT nhịp khi task khác tới
-  hạn (~22/200 tick). `dt` cứng 5ms sẽ làm Coulomb đếm thiếu ~11% — sai số
-  hệ thống, và `SCH_GetOverrunCount()` KHÔNG bắt được (instance nạp lại
-  luôn có RunMe=0). Tổng các `dt` đo được thì bằng đúng thời gian thực trôi.
+  Trước đây `SCH_Update()` chỉ set `RunMe` cho node ĐẦU → tối đa 1 task
+  dispatch/tick; tổng cầu 222/giây > cung 200/giây (SOC 5ms xin mỗi tick)
+  nên MỌI task chậm ~11%. **ĐÃ SỬA (2026-08-08, xem mục 5b): nhả nhiều
+  task/nhịp + ưu tiên** → SOC về đúng 5.000ms, 0 skip (LA xác nhận). `dt`
+  ĐO THẬT vẫn giữ vì vẫn còn 1 nguồn trễ hợp lệ: đọc DS18B20 blocking ~5ms
+  (giới hạn 1-wire) đẩy nhịp kế; nhờ SOC ưu tiên cao nhất chạy TRƯỚC Temp
+  nên SOC lấy update xong rồi Temp mới block → không sai số. Tổng các `dt`
+  luôn bằng đúng thời gian thực trôi (không lệ thuộc jitter).
 - Timeout dòng: không nhận 0x100 trong `CURRENT_TIMEOUT_MS = 100` →
   ép `current = 0` (ghi cả vào kho để byte 2-3 frame nhất quán). 20 frame
   liên tiếp mới kích; sai số nếu tích phân thêm 100ms @100A = 0.014%.
@@ -287,6 +294,25 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   rồi XOÁ); `RunMe -= 1` vào critical section cùng lúc pop Head; nạp lại
   lịch TRƯỚC khi chạy thân task; kiểm biên trước khi index; PRIMASK
   save/restore; `SCH_GetOverrunCount()` đếm trượt deadline (đo được **0**).
+- **Scheduler nâng cấp thời gian thực (2026-08-08, xác minh bằng Logic
+  Analyzer):**
+  1. **Nhả nhiều task/nhịp:** `SCH_Update` khi head `Delay==0` đi dọc chuỗi
+     bật `RunMe` cho CẢ nhóm cùng deadline (node kế `Delay==0`), dừng ở
+     `Delay>0`. Vòng `while(1)` gọi Dispatch liên tục nên nhả hết trong cùng
+     nhịp 5ms (SOC 46µs + Voltage 2.3ms = 2.4ms < 5ms). Xoá nghẽn 1-task/tick.
+  2. **Ưu tiên khi trùng deadline:** thêm field `Priority` (số LỚN = chạy
+     trước) vào `sTask`; `SCH_Add_Task(..., Priority)` chèn xét ưu tiên (case
+     2 + case 3, so `==` deadline rồi so prio); Dispatch re-arm GIỮ prio.
+     `main.c`: SOC=3, Voltage=2, CAN=1, Temp=0 → SOC luôn là head, chạy
+     TRƯỚC cả Voltage/Temp blocking.
+  - **Kết quả LA (50s, sample cao):** SysTick 1.000ms, nhịp SCH 5.000ms
+    (std ~0); SOC **5.000ms, 0 skip, gap max 5.02ms** (trước fix: 5.55ms,
+    503 skip, gap 15ms); Voltage 50.000, CAN/Temp 1000.01ms; **overlap=0**;
+    tại nhịp trùng SOC chạy trước Voltage/Temp ~36µs. Vụ DS18B20 chặn SOC
+    tự hết (SOC ưu tiên cao hơn Temp). CSV ở `Logic Analyzer/digital.csv`.
+  - **Cách đo:** `Core/Inc/Debug_Pins.h` — mỗi task nhá 1 chân PA (PA0..PA5,
+    HAL_GPIO_WritePin), bọc `#ifdef DBG_TIMING` (comment 1 dòng là tắt sạch,
+    zero overhead). Bắt bằng Saleae Logic 2.
 - **Ngưỡng bảo vệ** (`Board_Config.h`, dải AGM 12V phổ thông):
   over-volt **15.00V** (cũ 12.7 thấp hơn cả mức sạc 14.4 → báo lỗi suốt
   lúc sạc), under-volt **10.50V** (=1.75 VPC), over-temp **50.0°C**
@@ -372,6 +398,8 @@ bị phá.
   DRIVE_CYCLE) + plant + 3 estimator; seed Monte Carlo qua argv.
 - `BMS_Slave/UnitTest/sim/monte_carlo.sh` — 30 seed × 3 cấu hình.
 - `BMS_Slave/Core/Src/` — firmware slave hiện tại (Scheduler, Task_*, BMS_CAN...).
+- `BMS_Slave/Core/Inc/Debug_Pins.h` — chân nhá timing cho Logic Analyzer
+  (PA0..PA5, `#ifdef DBG_TIMING`); `Logic Analyzer/digital.csv` = capture mới nhất.
 - `BMS_Master/src/` — firmware master (Task_Current có Coulomb cũ sẽ gỡ,
   Task_CAN, Task_Logic, WebServer).
 - Tham khảo: PDF Thanh Trung (Kalman SOC 403V), bản vẽ "Bố trí chung xe

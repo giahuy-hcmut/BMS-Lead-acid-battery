@@ -45,18 +45,27 @@ void SCH_Update(void) {
             SCH_tasks_G[Head_Index].Delay--;
         }
 
-        // Nếu Task đầu đếm về 0 -> Báo chạy
+        // Nếu Task đầu đếm về 0 -> Báo chạy cho CẢ NHÓM cùng deadline.
+        // Trong delta-list, node sau có Delay == 0 nghĩa là tới hạn cùng lúc
+        // với node trước. Đi dọc chuỗi bật RunMe cho hết nhóm này, để chúng
+        // chạy TRONG cùng một nhịp thay vì bị đẩy sang các nhịp sau (chỉ nhả
+        // 1 task/nhịp là nguyên nhân các task chậm ~11% do quá tải). Dừng ở
+        // node đầu tiên có Delay > 0.
+        //
+        // Nếu đây là Task chạy 1 lần (Delay=0, Period=0), nó vẫn nằm ở Head
+        // chờ Dispatch xử lý.
         if (SCH_tasks_G[Head_Index].Delay == 0) {
-            SCH_tasks_G[Head_Index].RunMe += 1;
-
-            // Nếu đây là Task chạy 1 lần (Delay=0, Period=0),
-            // nó vẫn nằm ở Head chờ Dispatch xử lý.
+            uint8_t idx = Head_Index;
+            while ((idx != NO_TASK_ID) && (SCH_tasks_G[idx].Delay == 0)) {
+                SCH_tasks_G[idx].RunMe += 1;
+                idx = SCH_tasks_G[idx].NextTaskIndex;
+            }
         }
     }
 }
 
 // Hàm thêm Task: Sắp xếp chèn (Insertion Sort) vào danh sách Delta
-uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD_MS) {
+uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD_MS, uint8_t Priority) {
     uint8_t New_Index = 0;
     uint32_t primask;
 
@@ -84,6 +93,7 @@ uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD
     SCH_tasks_G[New_Index].pTask = pFunction;
     SCH_tasks_G[New_Index].Period = PERIOD_MS / SCH_TICK_MS;
     SCH_tasks_G[New_Index].RunMe = 0;
+    SCH_tasks_G[New_Index].Priority = Priority;
 
     // 3. THUẬT TOÁN CHÈN (CRITICAL SECTION BẮT ĐẦU)
     // Phải khóa ngắt để tránh SCH_Update làm sai lệch Delay khi đang tính toán
@@ -99,8 +109,11 @@ uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD
         SCH_tasks_G[New_Index].Delay = delay_ticks;
         SCH_tasks_G[New_Index].NextTaskIndex = NO_TASK_ID;
     }
-    // Trường hợp 2: Chèn vào ĐẦU danh sách (Delay mới < Head Delay)
-    else if (delay_ticks < SCH_tasks_G[Head_Index].Delay) {
+    // Trường hợp 2: Chèn vào ĐẦU danh sách.
+    // Sớm hơn head, HOẶC trùng deadline với head nhưng ưu tiên cao hơn.
+    else if ((delay_ticks <  SCH_tasks_G[Head_Index].Delay) ||
+             ((delay_ticks == SCH_tasks_G[Head_Index].Delay) &&
+              (Priority     >  SCH_tasks_G[Head_Index].Priority))) {
         SCH_tasks_G[Head_Index].Delay -= delay_ticks; // Trừ bù cho Task cũ
 
         SCH_tasks_G[New_Index].NextTaskIndex = Head_Index;
@@ -112,10 +125,15 @@ uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD
         uint8_t current = Head_Index;
         uint8_t prev = NO_TASK_ID;
 
-        // Duyệt tìm vị trí (Trừ dần delay_ticks)
+        // Duyệt tìm vị trí (Trừ dần delay_ticks). Chèn trước 'current' nếu tới
+        // hạn sớm hơn, hoặc trùng deadline nhưng ưu tiên cao hơn 'current'.
         while(current != NO_TASK_ID) {
             if (delay_ticks < SCH_tasks_G[current].Delay) {
                 break; // Tìm thấy chỗ chèn trước 'current'
+            }
+            if ((delay_ticks == SCH_tasks_G[current].Delay) &&
+                (Priority     >  SCH_tasks_G[current].Priority)) {
+                break; // Trùng giờ, ưu tiên cao hơn -> chèn trước
             }
             delay_ticks -= SCH_tasks_G[current].Delay;
             prev = current;
@@ -156,6 +174,7 @@ uint8_t SCH_Delete_Task(uint8_t taskIndex) {
     SCH_tasks_G[taskIndex].Delay = 0;
     SCH_tasks_G[taskIndex].Period = 0;
     SCH_tasks_G[taskIndex].RunMe = 0;
+    SCH_tasks_G[taskIndex].Priority = 0;
     SCH_tasks_G[taskIndex].NextTaskIndex = NO_TASK_ID;  /* leave no stale link */
 
     __set_PRIMASK(primask);
@@ -172,6 +191,7 @@ void SCH_Dispatch(void) {
             // 1. Lưu thông tin Task cần chạy
             void (*pRunTask)(void) = SCH_tasks_G[Head_Index].pTask;
             uint32_t period    = SCH_tasks_G[Head_Index].Period;
+            uint8_t  prio      = SCH_tasks_G[Head_Index].Priority;
             uint8_t current_id = Head_Index;
             uint32_t primask;
 
@@ -198,7 +218,7 @@ void SCH_Dispatch(void) {
              *    was already copied out above, so clearing pTask is safe. */
             SCH_Delete_Task(current_id);
             if (period > 0) {
-                SCH_Add_Task(pRunTask, period * SCH_TICK_MS, period * SCH_TICK_MS);
+                SCH_Add_Task(pRunTask, period * SCH_TICK_MS, period * SCH_TICK_MS, prio);
             }
 
             // 4. CHẠY TASK

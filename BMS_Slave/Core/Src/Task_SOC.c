@@ -12,6 +12,7 @@
 #include "Shared_Data.h"
 #include "BMS_CAN.h"
 #include "main.h"            /* HAL_GetTick */
+#include "Debug_Pins.h"
 
 // Khong nhan frame CAN_MASTER_ID qua lau -> ep dong ve 0.
 // Master phat moi 5 ms, nen 100 ms = 20 frame lien tiep bi mat moi kich.
@@ -29,6 +30,8 @@ void Task_SOC_Run(void)
     uint32_t now = HAL_GetTick();
     float    dt;
 
+    DBG_SET(DBG_SOC);           // bat den: task SOC bat dau chay
+
     BMS_Data_GetSnapshot(&snap);
 
     /* Init needs a REAL resting voltage to invert the OCV curve. Waiting for
@@ -42,6 +45,7 @@ void Task_SOC_Run(void)
             s_last_tick   = now;
             s_initialised = 1U;
         }
+        DBG_CLR(DBG_SOC);       // tat den: loi ra som (chua init xong)
         return;
     }
 
@@ -86,4 +90,5 @@ void Task_SOC_Run(void)
     /* Always through GetSOC(): the internal state is allowed to overshoot
      * [0,1] by the soft-clamp margin, the reported value is not. */
     BMS_Data_SetSoc((uint8_t)((SOC_Kalman_GetSOC(&s_kf) * 100.0f) + 0.5f));
+    DBG_CLR(DBG_SOC);           // tat den: task SOC ket thuc
 }

@@ -32,6 +32,7 @@
 #include "ds18b20.h"
 #include "BMS_ADC.h"
 #include "Board_Config.h"
+#include "Debug_Pins.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -123,22 +124,25 @@ int main(void)
 
   // 3. THÊM CÁC TASK VÀO LỊCH TRÌNH
 
-  // Task Đo Áp: Chạy ngay (delay 0), lặp 50ms/lần
-  SCH_Add_Task(Task_Voltage_Run, 0, 50);
+  // Tham số cuối = ƯU TIÊN (số lớn chạy trước khi TRÙNG nhịp).
+  // Task SOC (Kalman): prio 3 - nhẹ (46us), cần đúng nhịp -> chạy ĐẦU, trước
+  // cả Voltage/Temp blocking. Dùng TASK_SOC_PERIOD_MS để chu kỳ đăng ký và dt
+  // bên trong Task_SOC luôn khớp nhau.
+  SCH_Add_Task(Task_SOC_Run, 0, TASK_SOC_PERIOD_MS, 3);
 
-  // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần
+  // Task Đo Áp: Chạy ngay (delay 0), lặp 50ms/lần. prio 2 (blocking 2.3ms).
+  SCH_Add_Task(Task_Voltage_Run, 0, 50, 2);
+
+  // Task Gửi CAN: Chạy trễ 100ms (để né khởi động), lặp 1000ms/lần. prio 1.
   // Mẹo: Dùng ID để tạo delay khác nhau cho các Slave (tránh va chạm)
   uint32_t start_delay = (SLAVE_INDEX * 100U) + 300U;
-  SCH_Add_Task(Task_CAN_Run, start_delay, 1000);
+  SCH_Add_Task(Task_CAN_Run, start_delay, 1000, 1);
   // 1. Khởi động Timer cho DS18B20
   DS18B20_Init();
 
-  // 2. Thêm Task Nhiệt độ (Chạy lặp mỗi 1000ms, khởi động chệch đi 10ms để né Task Áp)
-  SCH_Add_Task(Task_Temperature_Run, 10, 1000);
-
-  // 3. Thêm Task SOC (Kalman). Dùng TASK_SOC_PERIOD_MS để chu kỳ đăng ký
-  //    và dt bên trong Task_SOC luôn khớp nhau.
-  SCH_Add_Task(Task_SOC_Run, 0, TASK_SOC_PERIOD_MS);
+  // 2. Thêm Task Nhiệt độ (lặp 1000ms, chệch 10ms). prio 0 - blocking 5ms nên
+  //    chạy CUỐI, nhường SOC lấy update trước.
+  SCH_Add_Task(Task_Temperature_Run, 10, 1000, 0);
 
   //SCH_Add_Task(Task_Sleep_Run, 0, 1000);
   /* USER CODE END 2 */
@@ -415,7 +419,7 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(DS18B20_GPIO_Port, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
-
+  DBG_Pins_Init();          // PA0..PA5: chan bao thoi gian cho logic analyzer
   /* USER CODE END MX_GPIO_Init_2 */
 }
 

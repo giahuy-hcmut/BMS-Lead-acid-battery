@@ -24,6 +24,7 @@ typedef struct {
     uint32_t Delay;         // Thời gian trễ (tính bằng Ticks)
     uint32_t Period;        // Chu kỳ lặp (tính bằng Ticks)
     uint8_t  RunMe;         // Cờ báo chạy
+    uint8_t  Priority;      // Ưu tiên khi TRÙNG deadline (số lớn = chạy trước)
     uint8_t  NextTaskIndex; // TRỎ ĐẾN TASK TIẾP THEO (Linked List)
 } sTask;
 
@@ -33,7 +34,9 @@ void SCH_Update(void);    // Gọi trong ngắt SysTick
 void SCH_Dispatch(void);  // Gọi trong while(1)
 // DELAY_MS and PERIOD_MS must both be whole multiples of SCH_TICK_MS,
 // otherwise the task is rejected and NO_TASK_ID is returned.
-uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD_MS);
+// Priority breaks ties between tasks due on the SAME tick: the higher number
+// runs first. It has no effect on tasks with different deadlines.
+uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD_MS, uint8_t Priority);
 uint8_t SCH_Delete_Task(uint8_t taskIndex);
 
 // Số lần một task đã tới hạn lại trước khi được dispatch (trượt deadline).

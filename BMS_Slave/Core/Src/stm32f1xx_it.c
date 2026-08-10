@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "Scheduler.h"
+#include "Debug_Pins.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -190,10 +191,12 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
+    DBG_SET(DBG_SYSTICK); DBG_CLR(DBG_SYSTICK);   // xung danh dau nhip 1ms
   // Tạo bộ đếm để hạ tốc độ từ 1ms xuống đúng 10ms
     static uint8_t tick_count = 0;
     tick_count++;
     if (tick_count >= SCH_TICK_MS) {
+        DBG_SET(DBG_SCH); DBG_CLR(DBG_SCH);       // xung danh dau nhip 5ms
         SCH_Update();
         tick_count = 0;
     }

@@ -9,8 +9,10 @@
 #include "Shared_Data.h"
 #include "Board_Config.h"   // THRESHOLD_OVER_TEMP
 #include "Task_Temperature.h"
+#include "Debug_Pins.h"
 void Task_Temperature_Run(void)
 {
+    DBG_SET(DBG_TEMP);          // bat den: task Temperature bat dau chay
     // Đọc kết quả của nhịp đo trước
     float temp = DS18B20_Read_Temperature();
 
@@ -24,4 +26,5 @@ void Task_Temperature_Run(void)
 
     // Ra lệnh đo tiếp (STM32 sẽ rảnh tay đi làm việc khác trong 750ms tới)
     DS18B20_Start_Conversion();
+    DBG_CLR(DBG_TEMP);          // tat den: task Temperature ket thuc
 }

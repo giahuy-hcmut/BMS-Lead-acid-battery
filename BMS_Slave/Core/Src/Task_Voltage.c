@@ -11,8 +11,10 @@
 #include "Shared_Data.h"
 #include "Board_Config.h"   // THRESHOLD_UNDER_VOLT / THRESHOLD_OVER_VOLT
 #include "BMS_ADC.h"
+#include "Debug_Pins.h"
 
 void Task_Voltage_Run(void) {
+    DBG_SET(DBG_VOLT);          // bat den: task Voltage bat dau chay
     // 1. Gọi Driver để đo (Đã có sẵn lấy mẫu 100 lần và tính hiệu chỉnh)
     float vol = BMS_ADC_GetVoltage();
 
@@ -25,4 +27,5 @@ void Task_Voltage_Run(void) {
     // 3. Nạp vào kho qua API. Task nay chi so huu 2 bit tren, khong the
     //    cham vao nhiet do / dong dien / SOC cua chu khac.
     BMS_Data_SetVoltage(vol, faults);
+    DBG_CLR(DBG_VOLT);          // tat den: task Voltage ket thuc
 }

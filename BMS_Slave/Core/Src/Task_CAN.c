@@ -11,8 +11,10 @@
 #include "Board_Config.h"   // CAN_SLAVE_ID
 #include "BMS_CAN.h"
 #include "BSP_Led.h"
+#include "Debug_Pins.h"
 
 void Task_CAN_Run(void) {
+    DBG_SET(DBG_CAN);           // bat den: task CAN bat dau chay
     uint8_t txData[8] = {0};
     BMS_Snapshot_t snap;
 
@@ -41,4 +43,5 @@ void Task_CAN_Run(void) {
 
     // Nháy đèn báo hiệu đã gửi
     BSP_Led_Toggle();
+    DBG_CLR(DBG_CAN);           // tat den: task CAN ket thuc
 }
