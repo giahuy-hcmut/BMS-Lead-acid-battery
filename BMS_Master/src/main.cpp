@@ -2,8 +2,7 @@
 #include "System_Data.h"
 #include "Task_CAN.h"
 #include "Task_Logic.h"
-#include "Task_Terminal.h" 
-#include "Task_LCD.h" 
+#include "Task_Terminal.h"
 #include "Task_EspNow.h" // [ĐÃ THAY ĐỔI: Include Task ESP-NOW]
 #include "Task_WebServer.h" // <--- THÊM DÒNG NÀY
 #include "Task_Current.h"
@@ -26,9 +25,9 @@ void setup() {
     // Chạy ở Core 0 để không làm phiền Core 1 tính toán
     xTaskCreatePinnedToCore(Task_Terminal_Run, "Term", 4096, NULL, 1, NULL, 0);
 
-    // <--- 2. Thêm Task LCD vào đây
-    // Priority thấp (1), chạy Core 0
-    //xTaskCreatePinnedToCore(Task_LCD_Run, "LCD", 4096, NULL, 1, NULL, 0);
+    // Task LCD đã bỏ hẳn: master không dùng màn hình LCD nữa, GPIO 21/22 (I2C)
+    // được giải phóng cho MCP2515. Task_Terminal và Task_EspNow vẫn giữ (đang
+    // tắt nhưng không chiếm chân nào).
 
     // <--- THÊM DÒNG NÀY (Để Stack Size là 8192 vì AsyncWeb cần nhiều RAM hơn một chút)
     xTaskCreatePinnedToCore(Task_WebServer_Run, "WebSrv", 8192, NULL, 2, NULL, 0);

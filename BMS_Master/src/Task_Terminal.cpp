@@ -18,22 +18,13 @@ void Terminal_Dashboard::init() {
 
 void Terminal_Dashboard::fetchData() {
     // [CHUẨN CÔNG NGHIỆP] Lấy bản chụp an toàn từ kho dữ liệu hệ thống
+    // isConnected da duoc System_Get_Snapshot() tinh san (System_Data.cpp), nen
+    // vong lap tinh lai o day la trung lap thuan - da bo.
     System_Get_Snapshot(localPacks);
-
-    // Tính trạng thái Online dựa trên thời gian cập nhật cuối cùng
-    for(int i=0; i<TOTAL_PACKS; i++) {
-        bool isOnline = (localPacks[i].lastUpdate > 0) && 
-                        (millis() - localPacks[i].lastUpdate < LCD_TIMEOUT);
-        localPacks[i].isConnected = isOnline;
-    }
 }
 
 void Terminal_Dashboard::printHeader(uint32_t uptime) {
-    float totalVolt = 0;
-    // Tính tổng điện áp của các Pack đang Online để kiểm tra OCV
-    for(int i=0; i<TOTAL_PACKS; i++) {
-        if(localPacks[i].isConnected) totalVolt += localPacks[i].voltage;
-    }
+    float totalVolt = System_TotalVoltage(localPacks);
 
     Serial.println("\n==========================================================");
     Serial.printf("   BMS MASTER DASHBOARD (Uptime: %lu s)\n", uptime);

@@ -38,8 +38,8 @@ void EspNow_Manager::sendTelemetry() {
     BMS_Pack_State snapPacks[TOTAL_PACKS];
     System_Get_Snapshot(snapPacks);
 
-    outgoingData.totalVoltage = 0;
-    outgoingData.systemCurrent = snapPacks[0].current; 
+    outgoingData.totalVoltage  = System_TotalVoltage(snapPacks);
+    outgoingData.systemCurrent = snapPacks[0].current;
     // SOC he thong = min cua cac binh; -1 khi co slave offline.
     // Tay cam se nhan -1 -> can hien "--" o firmware ben do.
     outgoingData.systemSOC = System_MinSoc(snapPacks);
@@ -49,10 +49,6 @@ void EspNow_Manager::sendTelemetry() {
         outgoingData.packTemps[i] = snapPacks[i].temperature; // <--- THÊM NHIỆT ĐỘ
         outgoingData.packStatus[i] = snapPacks[i].status;     // <--- THÊM MÃ LỖI
         outgoingData.isOnline[i] = snapPacks[i].isConnected;
-        
-        if (snapPacks[i].isConnected) {
-            outgoingData.totalVoltage += snapPacks[i].voltage;
-        }
     }
 
     Serial.printf("[ESP-NOW] Packing Data... Total Volt: %.2f V | SOC: %d %%\n", outgoingData.totalVoltage, outgoingData.systemSOC);

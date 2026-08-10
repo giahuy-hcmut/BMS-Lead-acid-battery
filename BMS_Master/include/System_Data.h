@@ -83,4 +83,14 @@ uint8_t System_GetPackCount(void);
 // Hàm THUẦN: không khoá mutex, nhận sẵn snapshot mà người gọi đã lấy.
 int System_MinSoc(const BMS_Pack_State *snaps);
 
+// Tổng điện áp các bình ĐANG online (V).
+//
+// Bỏ qua bình offline: giá trị của chúng là số cũ đọng lại, cộng vào sẽ ra tổng
+// cao giả. Task_LCD (đã xoá) từng quên kiểm isConnected và báo tổng khác Web -
+// đúng hậu quả của việc mỗi task tự viết lại cùng một vòng lặp. Gom về một chỗ
+// để chuyện đó không lặp lại khi thêm task mới.
+//
+// Hàm THUẦN, cùng khuôn System_MinSoc().
+float System_TotalVoltage(const BMS_Pack_State *snaps);
+
 #endif

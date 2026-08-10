@@ -51,16 +51,14 @@ String WebServer_Manager::buildJsonString() {
     BMS_Pack_State snapPacks[TOTAL_PACKS];
     System_Get_Snapshot(snapPacks);
 
-    float totalV = 0;
+    float totalV = System_TotalVoltage(snapPacks);
     float sysI = snapPacks[0].current;
     int sysSOC = System_MinSoc(snapPacks);   /* -1 = mot slave offline */
 
     String json = "{";
-    
+
     json += "\"packs\":[";
     for(int i=0; i<TOTAL_PACKS; i++) {
-        if (snapPacks[i].isConnected) totalV += snapPacks[i].voltage;
-        
         json += "{\"volt\":";
         json += String(snapPacks[i].voltage, 2);
         

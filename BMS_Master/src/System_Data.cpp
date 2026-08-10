@@ -49,6 +49,17 @@ uint8_t System_GetPackCount(void) {
     return TOTAL_PACKS;      /* runtime-configurable from the web UI later */
 }
 
+float System_TotalVoltage(const BMS_Pack_State *snaps) {
+    float total = 0.0f;
+
+    for (uint8_t i = 0; i < System_GetPackCount(); i++) {
+        if (snaps[i].isConnected) {
+            total += snaps[i].voltage;
+        }
+    }
+    return total;
+}
+
 int System_MinSoc(const BMS_Pack_State *snaps) {
     int lowest = 101;        /* above any valid SOC */
 
@@ -94,7 +105,7 @@ void System_Get_Snapshot(BMS_Pack_State *snapshotArray) {
         for(int i = 0; i < TOTAL_PACKS; i++) {
             // Tự động tính trạng thái Online ngay tại lõi
             bool isOnline = (globalPacks[i].lastUpdate > 0) && 
-                            (millis() - globalPacks[i].lastUpdate < LCD_TIMEOUT);
+                            (millis() - globalPacks[i].lastUpdate < SLAVE_TIMEOUT_MS);
             globalPacks[i].isConnected = isOnline;
             
             // Copy ra bản nháp cho các Task khác dùng
