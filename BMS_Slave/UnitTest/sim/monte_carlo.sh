@@ -12,7 +12,9 @@ run_config () {   # $1 name  $2 DRIVE_CYCLE  $3 WRONG_INIT  $4 QF  $5 BIAS
           s|#define WRONG_INIT   .*|#define WRONG_INIT   $3|; \
           s|#define Q_TRUE_FACTOR .*|#define Q_TRUE_FACTOR $4f|; \
           s|#define I_BIAS       .*|#define I_BIAS       $5f|" sim/simulate.c
-  gcc -std=c11 -I src sim/simulate.c src/SOC_Kalman.c -o sim/simulate -lm
+  # SOC_Kalman lives in the firmware tree (Core/), the same single copy the
+  # unit tests and the STM32 build use - see run.sh.
+  gcc -std=c11 -I ../Core/Inc sim/simulate.c ../Core/Src/SOC_Kalman.c -o sim/simulate -lm
   for s in $(seq 1 30); do
     ./sim/simulate "$s" > /dev/null
     awk -F, -v cfg="$1" -v seed="$s" 'NR>2{n++; c+=($7-$6)^2; h+=($8-$6)^2; k+=($9-$6)^2}

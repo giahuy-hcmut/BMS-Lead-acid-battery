@@ -59,7 +59,19 @@
 #define KF_R_MEAS        4.0e-4f    /* voltage meas. variance: sigma~20mV (12-bit ADC + 100-avg chain, conservative for un-modeled noise; replace with measured variance in GĐ8) */
 
 /* --- Robustness defenses --- */
-#define KF_MAX_CURRENT   60.0f      /* |I| above this is physically impossible -> reject */
+/* |I| above this is physically impossible -> reject, hold the last value.
+ *
+ * 250 A sits above the CSB EVX12200 datasheet Max Discharge Current of 230 A,
+ * so every reading the pack can physically produce is ACCEPTED, and below the
+ * master's +/-320 A clamp and the int16 A x100 wire range.
+ *
+ * Deliberately erring high. The old 60 A was set when the vehicle was assumed
+ * to draw 50 A; it is now 4 BLDC motors x 25 A = ~100 A peak, so 60 A would
+ * have REJECTED the real current and left the filter integrating a stale value
+ * - a silent, systematic SOC drift. Letting a glitch through instead costs one
+ * 5 ms Predict step: 250 A x 0.005 s / 72000 C = 0.0017% of SOC, and a
+ * persistent lie is still caught by the physics validator and innovation gate. */
+#define KF_MAX_CURRENT   250.0f
 #define KF_GATE_SIGMA    3.0f       /* innovation gating: reject if |y| > 3*sqrt(S) */
 #define KF_VALID_I_MIN   10.0f      /* physics validator active only when |I| > this */
 #define KF_VALID_RATIO   0.3f       /* if actual sag < 0.3*expected sag -> current is lying */

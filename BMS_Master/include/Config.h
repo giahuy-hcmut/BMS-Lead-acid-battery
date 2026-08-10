@@ -59,7 +59,13 @@
 #define RELAY_ON                HIGH    
 #define RELAY_OFF               LOW     
 
-#define MAX_DISCHARGE_CURRENT   50.0f   // Ngưỡng quá dòng (A) - Chỉnh theo công suất Motor
+// Ngưỡng quá dòng (A) - ngắt relay khi vượt.
+// 50 A là số cũ từ hồi giả định xe rút 50 A. Thực tế là 4 motor BLDC x 25 A
+// = ~100 A đỉnh, nên 50 A sẽ NGẮT RELAY GIỮA LÚC TĂNG TỐC BÌNH THƯỜNG.
+// 150 A = 1.5x đỉnh dự kiến, và 65% của Max Discharge Current 230 A trong
+// datasheet CSB EVX12200 -> vừa không ngắt oan, vừa dưới giới hạn của bình.
+// TODO xác nhận lại theo giới hạn dòng của bộ điều khiển motor khi có số.
+#define MAX_DISCHARGE_CURRENT   150.0f
 #define MIN_SOC_SHUTDOWN        5       // Mức % SOC thấp nhất cho phép chạy (Bảo vệ cạn bình)
 #define RECOVERY_SOC            10      // Mức % SOC an toàn để tự động đóng Relay trở lại (Hysteresis)
 

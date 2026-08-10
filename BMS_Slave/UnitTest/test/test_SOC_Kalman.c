@@ -106,10 +106,13 @@ void test_soc_always_fits_uint8_percent(void)
 
 void test_predict_spike_rejected_by_sanity(void)
 {
-    /* 100 A spike exceeds KF_MAX_CURRENT (60 A) -> held at last value (0).
-     * Predict must not integrate it. */
+    /* A spike above KF_MAX_CURRENT -> held at the last value (0), so Predict
+     * must not integrate it.
+     * Derived from the macro, never hardcoded: this used to say 100 A back when
+     * the limit was 60 A, and raising the limit to 250 A silently turned that
+     * "spike" into a legitimate current the filter was right to accept. */
     SOC_Kalman_Init(&kf, KF_OCV_FULL);
-    SOC_Kalman_Predict(&kf, 100.0f, DT_FAST);
+    SOC_Kalman_Predict(&kf, KF_MAX_CURRENT * 2.0f, DT_FAST);
     TEST_ASSERT_FLOAT_WITHIN(0.001f, 1.0f, kf.soc);
 }
 
