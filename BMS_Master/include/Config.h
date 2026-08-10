@@ -40,19 +40,20 @@
 #define WIFI_AP_CHANNEL         1               // BẮT BUỘC LÀ 1 ĐỂ KHÔNG CHẾT ESP-NOW
 #define WEB_UPDATE_INTERVAL     500             // Tốc độ làm mới Web (ms)
 
-// --- 6. CẤU HÌNH CẢM BIẾN DÒNG & SOC (ACS712-30A) ---
+// --- 6. CẤU HÌNH CẢM BIẾN DÒNG ---
+// SOC KHÔNG còn tính ở master: mỗi slave chạy Kalman rồi gửi về ở byte 4 của
+// frame CAN, master lấy min qua System_MinSoc(). Các hằng số phục vụ bộ đếm
+// Coulomb cũ (BATTERY_CAPACITY_AH, VOLTAGE_SYS_*) đã xoá cùng bộ đếm đó.
+//
+// TODO: ba hằng số dưới còn neo theo cảm biến Hall ACS712/ACS758. Phần cứng
+// đã chốt đổi sang SHUNT + amp (INA240/INA282) nên phải suy lại sensitivity và
+// zero theo giá trị shunt (mΩ) × hệ số khuếch đại. Chưa đổi thì dòng đọc sai.
 #define PIN_CURRENT_SENSOR      32
 #define ACS758_SENSITIVITY      0.0264  // Độ nhạy 26.4mV/A khi cấp nguồn 3.3V
 #define ACS758_ZERO_VOLTAGE     0//1.524    // Điện áp khi dòng = 0A (3.3V / 2)
 #define ACS758_ZERO_CURRENT     0.5     //  Dòng điện để calib khử từ trường
-#define BATTERY_CAPACITY_AH     20.0     // Dung lượng pin Testbench (20.0 Ah)
 
-// --- 7. CẤU HÌNH NGƯỠNG ĐIỆN ÁP & SOC (Hệ 60V Chì-Axit) ---
-#define VOLTAGE_SYS_MIN_VALID   5.0f     // Điện áp tối thiểu để xác nhận CAN đã gửi dữ liệu
-#define VOLTAGE_SYS_100_SOC     12.6f    // Điện áp khi bình đầy 100% (Khoảng 12.8V/bình)
-#define VOLTAGE_SYS_0_SOC       11.5f     // Điện áp khi bình cạn 0% (Khoảng 11.5V/bình)
-
-// --- 8. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
+// --- 7. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
 #define PIN_RELAY_CONTROL       26      // Chân xuất tín hiệu điều khiển Relay tổng
 // Lưu ý: Đa số Module Relay cách ly quang (Opto) kích ở mức THẤP (LOW). 
 // Nếu module của bạn kích mức CAO, hãy đảo ngược lại định nghĩa này.
