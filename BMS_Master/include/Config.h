@@ -69,4 +69,25 @@
 #define MIN_SOC_SHUTDOWN        5       // Mức % SOC thấp nhất cho phép chạy (Bảo vệ cạn bình)
 #define RECOVERY_SOC            10      // Mức % SOC an toàn để tự động đóng Relay trở lại (Hysteresis)
 
+// --- 8. CẤU HÌNH CAN XE (MCP2515 qua SPI) ---
+// ESP32 chỉ có MỘT bộ TWAI và nó đã cõng bus nội bộ master<->slave, nên bus xe
+// bắt buộc cần controller CAN thứ hai. Module HW-184: MCP2515 + TJA1050.
+//
+// Dùng chân VSPI MẶC ĐỊNH nên KHÔNG phải gọi SPI.begin() với chân tuỳ chọn -
+// bớt một chỗ sai, và khớp mọi ví dụ của thư viện:
+//     SCK = 18 · MISO = 19 · MOSI = 23
+#define PIN_VCAN_CS             5
+#define PIN_VCAN_INT            22      // CHƯA NỐI, CHƯA DÙNG - hiện chỉ GỬI.
+                                        // Đặt ở 22 (vừa giải phóng từ I2C) để mọi
+                                        // chân CAN xe nằm gọn trong vùng 5..23;
+                                        // GPIO 4 nằm ngay dưới 16/17 của TWAI nên
+                                        // dễ cắm lẫn chân của hai bus CAN.
+#define VCAN_STATUS_ID          0x200   // BMS -> xe: số liệu hệ thống
+#define VCAN_PACK_ID            0x201   // BMS -> xe: từng bình, ghép kênh
+#define VCAN_PERIOD_MS          100
+#define VCAN_TX_FAIL_LIMIT      10      // thất bại LIÊN TIẾP -> re-init
+
+// Bật để bring-up KHÔNG cần bus nào: MCP2515 tự nhận lại frame mình gửi.
+//#define VCAN_LOOPBACK
+
 #endif /* CONFIG_H */
