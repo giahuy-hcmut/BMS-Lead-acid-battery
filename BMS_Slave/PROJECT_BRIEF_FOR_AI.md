@@ -257,8 +257,9 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   GĐ3 mô phỏng + ma trận ✅ · GĐ4 Frama-C (bonus, chưa) ·
   **GĐ5 tích hợp firmware STM32 ✅ (2026-08-06)** — Task_SOC.c chạy thật,
   nhận dòng CAN, tick 5ms, verify trên chip · GĐ6 bench test (CHỜ mua
-  shunt + contactor) · **GĐ7 master: phát dòng 0x100 5ms ✅** — còn
-  auto-zero + SOC_min/max + cảnh báo lệch >5% + gỡ Coulomb cũ ·
+  shunt + contactor) · **GĐ7 master ✅ gần xong (2026-08-11)** — phát dòng
+  0x100 5ms ✅ · gỡ Coulomb cũ ✅ · SOC lấy từ slave ✅ · SOC hệ thống =
+  min ✅ · CAN xe qua MCP2515 ✅; CÒN auto-zero + cảnh báo lệch SOC ·
   GĐ8 pin thật: HPPC đo R0/R1/C1(SOC,T) + xả tham chiếu làm ground
   truth + đo nhiễu ADC thật.
 - Người dùng KHÔNG có xe → chiến lược: dồn bằng chứng vào mô phỏng theo
@@ -325,29 +326,76 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
 ## 6. TRẠNG THÁI & VIỆC KẾ TIẾP
 
 Mô phỏng ĐÓNG BĂNG (kết quả mục 3, không đổi trừ khi có số đo thật GĐ8).
-GĐ5 XONG. A2 (master phát dòng) XONG.
+GĐ5 XONG. Phần master của GĐ7 gần xong (2026-08-11).
 
-### 🔴 Việc quan trọng nhất còn lại — KHÔNG cần mua gì
+### ✅ Vòng dữ liệu ĐÃ KHÉP KÍN (2026-08-11)
 
-**SOC Kalman của slave hiện KHÔNG tới được đâu cả.**
-`BMS_Master/src/Task_CAN.cpp::readMessage()` chỉ giải mã `data[0..1]` (áp),
-`data[5]` (nhiệt), `data[6]` (cờ lỗi) — **BỎ QUA `data[2..3]` (dòng) và
-`data[4]` (SOC)**. Đồng thời `Task_Current.cpp:92-101` vẫn tính SOC bằng
-Coulomb cũ rồi ghi `globalPacks[0].soc`. Nên web dashboard đang hiện SOC
-Coulomb của master, không phải Kalman của slave.
+```
+Master đo dòng → 0x100 (5 ms) → Slave nhận → Kalman SOC
+                                                  ↓
+Web / CAN xe / Terminal / ESP-NOW ← System_MinSoc ← 0x103 byte4
+```
 
-1. Master giải mã `data[4]` (SOC) + `data[2..3]` (dòng) từ frame slave.
-2. Gỡ Coulomb SOC cũ ở `Task_Current.cpp` — hết hai nguồn SOC đánh nhau.
-3. Sửa data race: `Task_Current.cpp:101` ghi `globalPacks[0].soc` **KHÔNG
-   mutex**, trong khi `System_Get_Snapshot()` đọc CÓ mutex.
+Việc từng là "quan trọng nhất còn lại" — master bỏ qua byte 4 của frame slave
+và tự chạy Coulomb counter — **đã xong**:
+- `readMessage()` giải mã `data[4]` → `globalPacks[i].soc` (SOC RIÊNG từng bình).
+  `data[2..3]` (dòng) **cố ý KHÔNG giải mã**: đó là số master tự gửi đi ở 0x100,
+  đọc lại chỉ tạo hai nguồn sự thật cho cùng một con số.
+- Coulomb counter cũ ở `Task_Current.cpp` **đã gỡ** (115 → 63 dòng). Cùng lúc
+  mất luôn data race: nó ghi `globalPacks[0].soc` NGOÀI mutex mà
+  `System_Get_Snapshot()` đọc field đó CÓ mutex.
+- `Task_Current` giờ một việc: đo dòng. Bỏ khối chờ CAN lúc khởi động nên đo
+  dòng **từ boot** — slave cần dòng sớm.
+
+### ✅ SOC hệ thống = MIN, và `−1` khi thiếu dữ liệu
+
+`globalPacks[i].soc` giờ nghĩa là "SOC của bình i", nên 4 chỗ đang đọc
+`globalPacks[0].soc` như thể là SOC hệ thống đều phải đổi. `System_MinSoc()`:
+- Trả **min** của các bình: pack NỐI TIẾP nên bình yếu nhất quyết định giới hạn
+  xả, lấy bình 0 làm đại diện chỉ đúng do tình cờ.
+- Trả **`−1`** khi CÓ bất kỳ bình offline: không thể biết bình mất tích có phải
+  bình yếu nhất hay không, nên báo "không biết" thay vì đoán lạc quan.
+- `−1` cho hành vi fail-safe **miễn phí**: nhánh `sysSoc >= RECOVERY_SOC` thành
+  false ⇒ **relay không tự đóng lại khi còn bình chưa giám sát được**.
+
+Terminal in `--`, web in `-- %` và `-- Ah`, CAN xe gửi `0xFF`.
+
+### ✅ Ba hàm THUẦN của kho (nhấc lên khi có nhiều người gọi)
+
+Quy tắc: tính trong task; **chỉ nhấc lên `System_*` khi xuất hiện người gọi thứ
+hai**. Không nhấc trước.
+
+| Hàm | Vì sao lên | Ghi chú |
+|---|---|---|
+| `System_MinSoc(snaps)` | 4 người gọi | trả `−1` khi thiếu bình |
+| `System_TotalVoltage(snaps)` | 4 chỗ tự cộng, sắp thành 5 | bỏ qua bình offline |
+| `System_GetPackCount()` | móc treo | hôm nay = `TOTAL_PACKS` |
+
+Cả ba **không khoá mutex** — nhận sẵn snapshot người gọi đã lấy.
+
+`Task_LCD` **đã xoá** (master không dùng LCD nữa) ⇒ giải phóng GPIO 21/22 (I2C).
+`LCD_TIMEOUT` đổi tên **`SLAVE_TIMEOUT_MS`** — nó chưa bao giờ liên quan LCD, đó
+là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 
 ### Còn lại theo mức
 
+- 🔴 **Hằng số dòng điện đang neo SAI cảm biến.** `Config.h` còn
+  `ACS758_SENSITIVITY 0.0264` / `ACS758_ZERO_VOLTAGE 0` của cảm biến **Hall**,
+  trong khi phần cứng đã chốt đổi sang **SHUNT + amp** (INA240/INA282). Công
+  thức `(avgVolt − zeroVoltage)/sensitivity` sẽ ra dòng SAI ⇒ Kalman ăn số sai.
+  Phải suy lại theo giá trị shunt (mΩ) × hệ số khuếch đại. **CHẶN toàn bộ đường
+  dòng** — không có nó thì HPPC cũng vô nghĩa.
 - 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo).
 - 🟠 **9b**: under-volt bù `I·R0`. Ngưỡng 10.5V là số LÚC NGHỈ; ở 100A sụt
   `I·R = 1.35V` nên bình đang nghỉ 11.85V sẽ đọc 10.5V dưới tải → **ngắt
   oan ở ~17% SOC**. Sửa: so `V + I·R0`. Đã có dòng nên làm được.
-- 🟠 **MCP2515 qua SPI → CAN xe** (chưa có dòng code nào). Cần module.
+- 🟠 **Auto-zero cảm biến dòng lúc nghỉ** — brief cam kết kiến trúc, chưa code.
+- 🟠 **EEPROM/NVS cho `activePackCount`** — xem mục 9. Không lưu thì tính năng
+  "web nhập số pack" reset về 5 mỗi lần mất điện.
+- 🟠 **Web nhập số pack** — móc `System_GetPackCount()` đã sẵn, chỉ cần đổi thân
+  hàm + setter + UI.
+- 🟡 **`Task_Terminal` và `Task_EspNow` đang bị comment** trong `main.cpp` — có
+  code, không chạy. Giữ lại vì không chiếm chân nào. Quyết bật hay bỏ.
 - 🟡 Gói nhiệt độ: cold boot đọc +85°C (mặc định scratchpad) → kích
   ERROR_OVER_TEMP ở frame đầu; lọc dải hợp lệ (0.0 và 85.0 hiện lọt);
   `uint16_t Temp` → `int16_t` cho nhiệt âm. **Người dùng đã chọn BỎ QUA.**
@@ -367,7 +415,140 @@ Coulomb của master, không phải Kalman của slave.
 Datasheet CSB EVX12200 giới hạn **Max Charge Current = 6.00 A**. Regen của
 xe (4 motor × 25A) có thể đẩy về **~100A** — gấp **16 lần**. Phải chặn ở
 tầng điều khiển motor hoặc chọn bình khác. BMS báo bình thường mà bình vẫn
-bị phá.
+bị phá. Nghĩa là **với bình này, regen gần như không dùng được**: 6A ở 60V =
+360W trong khi 4 motor có thể trả về ~6kW.
+
+Cách ĐÚNG để chặn: gửi frame "giới hạn dòng sạc cho phép" lên CAN xe để xe tự
+giới hạn — **chưa làm** vì chưa có xe nào đọc.
+
+## 6b. CAN XE — MCP2515 qua SPI (xong firmware 2026-08-11)
+
+**Vì sao cần chip ngoài:** ESP32 chỉ có **MỘT** bộ TWAI và nó đã cõng bus nội bộ
+master↔slave. Bus xe là mạng thứ hai ⇒ bắt buộc controller CAN thứ hai.
+
+### Giao thức CHỐT (tự định nghĩa, đổi ID lại khi có xe thật)
+
+Quy ước **giống bus nội bộ**, không tạo cái thứ hai: **MSB trước · `int16` bù 2 ·
+dòng > 0 = XẢ**. Cả hai frame mang **đúng tập dữ liệu web dashboard đang hiện**,
+nên hai đường ra kiểm chéo nhau được bằng mắt.
+
+**`0x200` BMS_STATUS · 100 ms · DLC 8**
+
+| Byte | Nội dung | Kiểu | Scale |
+|---|---|---|---|
+| 0-1 | Tổng áp bình ONLINE | `uint16` | 0.01 V |
+| 2-3 | Dòng pack | `int16` | 0.01 A, >0 = xả, clamp ±320 |
+| 4 | SOC hệ thống | `uint8` | 1 %, **`0xFF` = không xác định** |
+| 5 | Trạng thái | `uint8` | 0=init 1=idle 2=xả 3=sạc 4=fault |
+| 6 | Cờ lỗi | `uint8` | bitmask ↓ |
+| 7 | **Bộ đếm sống** | `uint8` | tăng 1 mỗi frame, quay vòng |
+
+Byte 6: `01` quá áp · `02` sụt áp · `04` quá nhiệt *(ba bit này lấy NGUYÊN từ byte
+status của slave — slave chỉ dùng bit 0-2 nên bit 3 trở lên an toàn cho master)* ·
+`08` quá dòng · `10` mất slave · `20` relay đang ngắt · `40` **người vận hành tự
+ngắt** *(để xe phân biệt "lỗi" với "người tắt" — hai phản ứng khác nhau)* ·
+`80` lỗi nội bộ.
+
+**`0x201` BMS_PACK · 100 ms · DLC 8 · GHÉP KÊNH** (5 bình ⇒ quét đủ 500 ms)
+
+| Byte | Nội dung | Ghi chú |
+|---|---|---|
+| 0 | Chỉ số bình | bộ chọn kênh, xoay theo `System_GetPackCount()` |
+| 1-2 | Áp bình | `uint16` 0.01 V |
+| 3 | **SOC bình** | Kalman của chính slave đó · `0xFF` nếu offline |
+| 4 | Nhiệt bình | `int8` °C · **`0x80`** nếu offline |
+| 5 | Cờ lỗi bình | = byte 6 frame slave |
+| 6 | Online | 0/1 |
+| 7 | **Số bình đang giám sát** | frame TỰ MÔ TẢ, xe không hardcode 5 |
+
+Tải bus: 2 frame × 10 Hz × 222 µs = **0.44%** của 500 kbps.
+
+**Ba chi tiết tồn tại để BẮT LỖI, không phải trang trí:**
+1. `0xFF` / `0x80` = "không biết". Gửi số TRÔNG hợp lý lúc không có dữ liệu nguy
+   hiểm hơn là báo thẳng.
+2. Bộ đếm sống: frame vẫn tới mà bộ đếm **đứng** ⇒ BMS treo. Timeout frame
+   **không** bắt được ca này.
+3. Byte 7 của `0x201` khớp luôn tính năng "web nhập số pack".
+
+### BẢN ĐỒ CHÂN ESP32 (master) — sau khi bỏ LCD
+
+Nguyên tắc bố trí: **mỗi task một cụm chân liền nhau**.
+
+| Chân | Dùng | Task |
+|---|---|---|
+| `16` TX · `17` RX | TWAI — bus **nội bộ** ↔ slave | Task_CAN |
+| `5` CS · `18` SCK · `19` MISO · `23` MOSI | SPI — bus **xe** qua MCP2515 | Task_VehicleCAN |
+| `22` | `INT` của MCP2515 — **khai chỗ, CHƯA nối** | Task_VehicleCAN |
+| `26` | Relay tổng | Task_Logic |
+| `32` | ADC dòng — **phải là ADC1**, ADC2 không dùng được khi WiFi bật | Task_Current |
+| `21` · `4` · `25` · `27` · `33-35` | **trống** | |
+
+Dùng **chân VSPI mặc định** nên KHÔNG phải gọi `SPI.begin()` với chân tuỳ chọn —
+bớt một chỗ sai, và khớp mọi ví dụ của thư viện.
+
+`INT` đặt ở **22** (vừa giải phóng từ I2C) chứ không phải GPIO 4: trên header
+DevKit v1, chân 4 nằm ngay dưới 16/17 của TWAI ⇒ chân của **hai bus CAN khác
+nhau** sẽ nằm xen kẽ, dễ cắm lẫn khi có 5 slave + 1 bus xe cùng lúc. Ở 22 thì
+toàn bộ cụm CAN xe nằm gọn trong vùng `5…23`, TWAI ở ngay dưới.
+
+### Module HW-184 — ba cái bẫy
+
+| Bẫy | Chi tiết |
+|---|---|
+| **Thạch anh 8 MHz** (X1 in `8.000`) | Phải khai `MCP_8MHZ`. Khai `MCP_16MHZ` như phần lớn ví dụ ⇒ baudrate còn **một nửa** ⇒ bus IM LẶNG HOÀN TOÀN, không lỗi nào báo. Giá trị kỳ vọng trên SPI: `02 2A 00` · `02 29 D1` · `02 28 81` (= `MCP_8MHz_500kBPS_CFG1/2/3`) |
+| **Mức logic** | TJA1050 là transceiver **5V** (cần ≥4.75V), ESP32 là 3.3V, module dùng **một chân VCC chung**. Cấp 5V ⇒ `SO` xuất 5V vào ESP32 (vượt absolute max) VÀ ESP32 xuất 3.3V < `VIH = 3.5V` của MCP2515 ⇒ **vấn đề hai chiều**. Cách: level shifter, hoặc thay `SN65HVD230`, hoặc cấp 3.3V (ngoài spec transceiver, dây ngắn trên bàn thường vẫn chạy) |
+| **Jumper `J1` 120 Ω** | Module có sẵn điện trở kết cuối. Bus phải đúng **2** cái ở **hai đầu**. Nằm giữa bus đã terminate ⇒ **THÁO J1**. Áp cả cho bus nội bộ: 5 slave + master phải đúng 2 cái, không phải mỗi board một cái |
+
+### ⚠️ Logic analyzer KHÔNG đọc được CAN_H/CAN_L
+
+CAN là tín hiệu **vi sai**: recessive `H≈L≈2.5V`, dominant `H≈3.5V / L≈1.5V`.
+Ngưỡng LA ~1.5V ⇒ cắm CAN_H luôn đọc HIGH, cắm CAN_L nhảy loạn. Cần **oscilloscope**
+để xem sóng, mà scope cũng không decode ra frame.
+
+**Cách test đúng, không cần thêm thiết bị:** nối `H`/`L` của MCP2515 vào **bus nội
+bộ** (cũng 500 kbps) rồi soi **GPIO 17** (chân RX của TWAI) — đó là logic đơn, LA
+decode được. Thấy `0x200`/`0x201` ở đó ⇒ MCP2515 **thực sự đẩy được tín hiệu ra
+CAN_H/CAN_L**.
+
+An toàn khi nối chung bus: master nhận `0x200` → `idx = 0x200 − 0x103 = 253` →
+bounds check chặn; slave chỉ xét `StdId == 0x100` → bỏ qua. Không ai bị nhiễu.
+
+Chỉ cần **RX**, không cần TX: transceiver dội TX lên RX (cơ chế bit-monitoring)
+nên RX thấy toàn bộ traffic trên bus.
+
+### Chưa làm, cố ý
+
+- **Nhận frame từ xe** — `PIN_VCAN_INT` (GPIO 22) khai chỗ nhưng **không nối,
+  không dùng**. Chưa biết xe có gửi gì.
+- **Frame giới hạn dòng sạc/xả** — chưa ai đọc.
+- Bit "lệch SOC" — xe tự tính được từ `0x201`, không cần bit riêng.
+
+## 6c. LƯU DỮ LIỆU QUA MẤT ĐIỆN (chưa làm)
+
+**Cả hai chip đều KHÔNG có EEPROM thật.** STM32F103C8T6 chỉ có Flash 64KB (muốn
+dùng phải giả lập, ST có AN2594). ESP32 cũng không — `EEPROM.h` của Arduino là
+giả lập trên partition Flash; API đúng là **`Preferences`** (NVS), tự lo wear
+levelling.
+
+| Ưu tiên | Dùng làm gì | Chip | Ghi chú |
+|---|---|---|---|
+| 1 | **`activePackCount`** | ESP32 `Preferences` | Đã là yêu cầu; không lưu thì reset về 5 mỗi lần mất điện |
+| 2 | **SOC lúc tắt máy** | STM32 | Init hiện đảo OCV từ mẫu áp đầu — nhưng ngay sau khi xe chạy thì áp CHƯA NGHỈ (V_RC chưa tan) ⇒ OCV sai. Đây là ứng dụng kinh điển của BMS |
+| 3 | `SLAVE_INDEX` + `CALIB_K/B` | STM32 | ⇒ **MỘT binary cho cả 5 board**. Hiện 5 file `.elf` khác nhau = rủi ro nạp lẫn, mà biểu hiện chỉ là áp lệch vài chục mV |
+| 4 | Log lỗi cuối | STM32 | Relay ngắt rồi mất điện ⇒ hiện không còn dấu vết |
+| 5 | Ah tích luỹ → **SOH** | STM32 | Hướng mở rộng: datasheet 400 chu kỳ @100% DOD |
+
+**Ba bẫy:**
+1. **Ghi Flash trên STM32 chặn CPU 20-40 ms.** Scheduler vừa đo được 5.000 ms /
+   0 skip — một lần xoá trang là **bỏ 4-8 nhịp**. KHÔNG được ghi trong lúc chạy
+   bình thường.
+2. **Số lần ghi.** F103 chịu ~10.000 lần xoá/trang. Xoá+ghi cùng địa chỉ mỗi lần
+   SOC đổi 1% ⇒ 100 lần/chu kỳ ⇒ **Flash chết sau 100 chu kỳ**, mà pin rated
+   400. Cách đúng: **luân phiên trong trang** — trang 1KB / 8 byte = 128 ô ⇒
+   `128 × 10.000 = 1.28 triệu` lần ghi ⇒ 12.800 chu kỳ, gấp 32 lần tuổi thọ pin.
+   ESP32 `Preferences` tự làm; STM32 phải tự viết.
+3. **Mất điện giữa lúc ghi** ⇒ dữ liệu rác. Cần 2 bản + checksum. Với SOC thì số
+   rác đó đi thẳng vào Kalman.
 
 ## 7. QUY ƯỚC & NGUYÊN TẮC LÀM VIỆC VỚI NGƯỜI DÙNG NÀY
 
@@ -376,9 +557,17 @@ bị phá.
   chuẩn quốc tế / paper có trích dẫn / bản vẽ thật. Người dùng đã bắt lỗi
   "lấp liếm" một lần (giảm bias cho đẹp) — phải phân tích trung thực kể
   cả khi Kalman thua.
-- Người dùng muốn HIỂU và TỰ LÀM (đã tự dựng Unity, tự chạy MATLAB):
+- Người dùng muốn HIỂU và TỰ LÀM (đã tự dựng Unity, tự chạy MATLAB, tự
+  nâng cấp scheduler real-time + đo bằng Logic Analyzer):
   giải thích trước, hỏi chốt phương án, KHÔNG code khi chưa được đồng ý.
-  Thích bàn kỹ thiết kế trước khi triển khai.
+  Thích bàn kỹ thiết kế trước khi triển khai. Thường yêu cầu "liệt kê chi
+  tiết công việc và code, tôi duyệt mới làm".
+- **Người dùng bắt lỗi thiết kế thừa rất đúng.** Đã hai lần chỉ ra AI thêm
+  tính năng suy đoán: (1) dựng 3 frame CAN xe cho tình huống chưa tồn tại,
+  (2) đòi thêm field vào kho trong khi task tự suy ra được từ snapshot.
+  **Nguyên tắc anh chốt:** thêm chức năng = thêm MỘT task, task snapshot rồi
+  tự đóng gói; kho chỉ GIỮ, không tính; chỉ nhấc hàm lên `System_*` khi có
+  người gọi thứ hai. Đừng nhấc trước, đừng dựng frame chưa ai đọc.
 - Trình độ: sinh viên nhúng, nắm cơ bản; giải thích bằng ví von + con số
   cụ thể; hay hỏi "tại sao" sâu nhiều tầng — trả lời thẳng, nhận sai khi
   bị bắt lỗi đúng.
@@ -400,8 +589,21 @@ bị phá.
 - `BMS_Slave/Core/Src/` — firmware slave hiện tại (Scheduler, Task_*, BMS_CAN...).
 - `BMS_Slave/Core/Inc/Debug_Pins.h` — chân nhá timing cho Logic Analyzer
   (PA0..PA5, `#ifdef DBG_TIMING`); `Logic Analyzer/digital.csv` = capture mới nhất.
-- `BMS_Master/src/` — firmware master (Task_Current có Coulomb cũ sẽ gỡ,
-  Task_CAN, Task_Logic, WebServer).
+- `BMS_Master/src/System_Data.cpp` + `include/System_Data.h` — kho của master:
+  `globalPacks[]` + mutex + `System_Get_Snapshot()`, và 3 hàm THUẦN
+  `System_MinSoc` / `System_TotalVoltage` / `System_GetPackCount`.
+- `BMS_Master/src/Task_VehicleCAN.cpp` + `include/Task_VehicleCAN.h` — CAN xe
+  qua MCP2515 (2 frame `0x200`/`0x201`, xem mục 6b).
+- `BMS_Master/src/Task_CAN.cpp` — bus nội bộ: phát `0x100` chở dòng 5 ms,
+  nhận frame slave (giải mã áp / **SOC byte 4** / nhiệt / cờ lỗi).
+- `BMS_Master/src/Task_Current.cpp` — CHỈ đo dòng (Coulomb cũ đã gỡ).
+- `BMS_Master/src/Task_Logic.cpp` — bảo vệ + relay + hysteresis.
+- `BMS_Master/src/Task_WebServer.cpp` + `include/Web_HTML.h` — dashboard;
+  JSON có SOC RIÊNG từng bình, xử lý `soc = −1` thành `--`.
+- `BMS_Master/include/Config.h` — mục 8 = chân/ID/chu kỳ CAN xe.
+  ⚠️ mục 6 còn hằng số cảm biến **Hall** trong khi phần cứng đã đổi sang shunt.
+- Đã XOÁ: `Task_LCD.*` (master không dùng LCD), `BATTERY_CAPACITY_AH`,
+  `VOLTAGE_SYS_*` (chết theo Coulomb counter).
 - Tham khảo: PDF Thanh Trung (Kalman SOC 403V), bản vẽ "Bố trí chung xe
   Murata.pdf", Excel chuẩn UnitTest_FormalVerification, datasheet CSB
   EVX12200 + ACS758 (đã tải, số đã trích trong tài liệu này).
