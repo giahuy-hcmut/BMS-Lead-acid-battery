@@ -41,6 +41,11 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
     uint8_t flags     = 0;
     bool    allOnline = true;
 
+    /* Cam bien dong con song khong. Task_Current dat co nay sau CURRENT_FAULT_LIMIT
+     * lan I2C khong ACK lien tiep. Khi mat, packI la so CU dong lai trong kho -
+     * khong duoc dung no de suy bat cu dieu gi. */
+    bool    iValid    = !currentSensorFault;
+
     for (uint8_t i = 0; i < System_GetPackCount(); i++) {
         if (snaps[i].isConnected) {
             flags |= snaps[i].status;   /* slave chỉ dùng bit 0-2 */
@@ -54,21 +59,31 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
     if (allOnline) { seenAll = true; }
 
     if (!allOnline)                    { flags |= VCAN_FLAG_SLAVE_LOST;   }
-    if (packI > MAX_DISCHARGE_CURRENT) { flags |= VCAN_FLAG_OVER_CURRENT; }
     if (systemLocked)                  { flags |= VCAN_FLAG_RELAY_OPEN;   }
     if (webForceRelayOff)              { flags |= VCAN_FLAG_MANUAL_OFF;   }
+    if (currentSensorFault)            { flags |= VCAN_FLAG_BMS_INTERNAL; }
 
-    /* ACS758_ZERO_CURRENT là vùng chết mà Task_Current đã áp: dưới ngưỡng đó nó
-     * ép dòng về đúng 0.0, nên dùng lại cùng con số làm ranh giới "đang nghỉ"
-     * thay vì gõ một hằng số thứ hai có thể lệch. */
-    const float idleBand = (float)ACS758_ZERO_CURRENT;
+    /* Bao qua dong CHI khi so dong con tin duoc. Bao "qua dong" dua tren mot gia
+     * tri vo hieu con te hon la khong bao gi: xe se phanh tai vi mot con so rac. */
+    if (iValid && (packI > MAX_DISCHARGE_CURRENT)) {
+        flags |= VCAN_FLAG_OVER_CURRENT;
+    }
 
+    /* CURRENT_IDLE_BAND là vùng chết mà Task_Current đã áp: dưới ngưỡng đó nó ép
+     * dòng về đúng 0.0, nên dùng lại cùng con số làm ranh giới "đang nghỉ" thay vì
+     * gõ một hằng số thứ hai có thể lệch. */
+    const float idleBand = CURRENT_IDLE_BAND;
+
+    /* !iValid -> FAULT, không phải IDLE. Task_Logic cũng sẽ ngắt relay vì mất cảm
+     * biến, nhưng nó chỉ quét mỗi ~100 ms; trong khe đó systemLocked vẫn false và
+     * packI (số cũ đọng lại) rất có thể nằm trong vùng chết -> xe sẽ nhận được
+     * "IDLE" trong khi pack đang xả và BMS thì đã mù. */
     VCAN_State_t state;
-    if      (!seenAll)             { state = VCAN_STATE_INIT;      }
-    else if (systemLocked)         { state = VCAN_STATE_FAULT;     }
-    else if (packI >  idleBand)    { state = VCAN_STATE_DISCHARGE; }
-    else if (packI < -idleBand)    { state = VCAN_STATE_CHARGE;    }
-    else                           { state = VCAN_STATE_IDLE;      }
+    if      (!seenAll)                    { state = VCAN_STATE_INIT;      }
+    else if (systemLocked || !iValid)     { state = VCAN_STATE_FAULT;     }
+    else if (packI >  idleBand)           { state = VCAN_STATE_DISCHARGE; }
+    else if (packI < -idleBand)           { state = VCAN_STATE_CHARGE;    }
+    else                                  { state = VCAN_STATE_IDLE;      }
 
     /* Clamp TRƯỚC khi scale, cùng lý do như sendCurrentFrame: int16 chỉ tới
      * +/-327.67 A, cảm biến lỗi sẽ làm tràn và ĐẢO DẤU - xe sẽ tưởng pack đang
@@ -77,7 +92,8 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
     if (packI < -320.0f) { packI = -320.0f; }
 
     uint16_t vRaw = (uint16_t)lroundf(totalV * 100.0f);
-    int16_t  iRaw = (int16_t) lroundf(packI  * 100.0f);
+    int16_t  iRaw = iValid ? (int16_t)lroundf(packI * 100.0f)
+                           : (int16_t)VCAN_CURRENT_INVALID;
 
     out[0] = (uint8_t)((vRaw >> 8) & 0xFF);     /* MSB truoc */
     out[1] = (uint8_t)( vRaw       & 0xFF);

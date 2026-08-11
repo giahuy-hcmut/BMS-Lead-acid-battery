@@ -9,6 +9,11 @@ volatile bool webSlavesActive  = true;
 volatile bool systemLocked     = false;
 char faultReason[64]           = "";
 
+/* Khoi tao TRUE: fail-safe. Chua co bang chung cam bien dong con song thi coi nhu
+ * mat; CurrentSensor_Manager::init() xoa co khi ina.begin() thanh cong. Relay cung
+ * bat dau o trang thai NGAT (Task_Logic::init) nen khong co khe ho nao. */
+volatile bool currentSensorFault = true;
+
 // 2. Khởi tạo
 void System_Data_Init() {
     dataMutex = xSemaphoreCreateMutex();

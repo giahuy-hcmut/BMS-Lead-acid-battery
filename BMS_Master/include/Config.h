@@ -39,18 +39,55 @@
 #define WIFI_AP_CHANNEL         1               // BẮT BUỘC LÀ 1 ĐỂ KHÔNG CHẾT ESP-NOW
 #define WEB_UPDATE_INTERVAL     500             // Tốc độ làm mới Web (ms)
 
-// --- 6. CẤU HÌNH CẢM BIẾN DÒNG ---
+// --- 6. CẢM BIẾN DÒNG: INA219 + SHUNT NGOÀI ---
 // SOC KHÔNG còn tính ở master: mỗi slave chạy Kalman rồi gửi về ở byte 4 của
 // frame CAN, master lấy min qua System_MinSoc(). Các hằng số phục vụ bộ đếm
 // Coulomb cũ (BATTERY_CAPACITY_AH, VOLTAGE_SYS_*) đã xoá cùng bộ đếm đó.
 //
-// TODO: ba hằng số dưới còn neo theo cảm biến Hall ACS712/ACS758. Phần cứng
-// đã chốt đổi sang SHUNT + amp (INA240/INA282) nên phải suy lại sensitivity và
-// zero theo giá trị shunt (mΩ) × hệ số khuếch đại. Chưa đổi thì dòng đọc sai.
-#define PIN_CURRENT_SENSOR      32
-#define ACS758_SENSITIVITY      0.0264  // Độ nhạy 26.4mV/A khi cấp nguồn 3.3V
-#define ACS758_ZERO_VOLTAGE     0//1.524    // Điện áp khi dòng = 0A (3.3V / 2)
-#define ACS758_ZERO_CURRENT     0.5     //  Dòng điện để calib khử từ trường
+// Shunt 100 A / 75 mV = 0.75 mOhm, class 0.5. R100 (0.1 Ohm) trên module ĐÃ GỠ:
+// để lại thì nó nằm song song 2 dây sense và rút 0.75 A qua dây dành cho microvolt.
+//
+// Đo LOW-SIDE ở cực âm pack. Common-mode của INA219 chỉ 0-26 V, không chịu được
+// 60 V (72-75 V lúc sạc) của high-side. GND của ESP32 bám vào đầu IN- (phía cực
+// âm pack) nên chiều XẢ nằm trong dải hợp lệ; chiều regen ra ngoài spec (-56 mV
+// ở 75 A) nhưng vẫn trong absolute max -0.3 V. Ghi rõ giới hạn này trong báo cáo.
+//
+// Số ĐO THẬT trên bench (Code/BENCH_INA219, 2026-08-12) - không phải số datasheet:
+//   thang đo  320 mV -> +/-427 A   (kẹp ở đúng 320.000 khi cấp 3.27 V vi sai)
+//   offset    -17.5 uV = -23.3 mA  -> 0.117 %/h trôi Coulomb trên 20 Ah
+//   nhiễu     27.2 uV 1 mẫu        -> 12.8 mA sau lọc 8 mẫu
+//   bước      10 uV = 13.3 mA
+//   gain      khớp vôn kế trong 1 % (datasheet ±1 %, shunt class 0.5 -> tổng ±1.5 %)
+#define INA219_I2C_ADDR         0x40
+#define PIN_INA_SDA             21
+#define PIN_INA_SCL             22
+
+#define SHUNT_FULL_A            100.0f
+#define SHUNT_FULL_MV           75.0f
+
+// Đo ở bước 5 của bench, SAU khi hàn shunt (gồm cả nhiệt điện động mối nối: hàn
+// vào chỉ làm offset dịch 6 uV, nên mối hàn sạch).
+#define CURRENT_ZERO_MV         (-0.0175f)
+
+// +1 = dòng XẢ ra số DƯƠNG. Đặt theo cách đấu dây: IN+ ở đầu mà dòng ĐI VÀO shunt
+// khi xả (phía điểm mass sao).
+//
+// CHƯA xác nhận bằng dòng thật - không có tải trên bàn. PHẢI kiểm ở lần chạy xe
+// đầu tiên: SOC phải GIẢM, byte 5 của 0x200 phải = 2 (DISCHARGE), dòng trên web
+// phải DƯƠNG. Sai thì đổi thành -1.0f, KHÔNG tháo dây.
+//
+// Dấu sai là NGUY HIỂM: packI âm làm (packI > MAX_DISCHARGE_CURRENT) luôn sai
+// -> bảo vệ quá dòng tắt hoàn toàn. Bù lại nó rất ồn ào (SOC tăng khi đang chạy)
+// nên hoãn được, miễn là nằm trong checklist khởi động.
+#define CURRENT_SIGN            (+1.0f)
+
+// Vùng chết quanh 0: dưới ngưỡng này Task_Current ép dòng về đúng 0.0. 0.5 A là
+// ~21x nhiễu đo được (12.8 mA sau lọc) nên nó không cắt mất tín hiệu thật.
+// Task_VehicleCAN dùng lại CHÍNH hằng này làm ranh giới "đang nghỉ" - một con số,
+// hai chỗ đọc, không có cơ hội lệch nhau.
+#define CURRENT_IDLE_BAND       0.5f
+#define TASK_CURRENT_PERIOD_MS  3       // 8 mẫu x 3 ms = cửa sổ lọc 24 ms
+#define CURRENT_FAULT_LIMIT     20      // lần I2C không ACK LIÊN TIẾP -> báo mất
 
 // --- 7. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
 #define PIN_RELAY_CONTROL       26      // Chân xuất tín hiệu điều khiển Relay tổng
@@ -77,11 +114,11 @@
 // bớt một chỗ sai, và khớp mọi ví dụ của thư viện:
 //     SCK = 18 · MISO = 19 · MOSI = 23
 #define PIN_VCAN_CS             5
-#define PIN_VCAN_INT            22      // CHƯA NỐI, CHƯA DÙNG - hiện chỉ GỬI.
-                                        // Đặt ở 22 (vừa giải phóng từ I2C) để mọi
-                                        // chân CAN xe nằm gọn trong vùng 5..23;
-                                        // GPIO 4 nằm ngay dưới 16/17 của TWAI nên
-                                        // dễ cắm lẫn chân của hai bus CAN.
+#define PIN_VCAN_INT            4       // CHƯA NỐI, CHƯA DÙNG - hiện chỉ GỬI.
+                                        // Dời từ 22 về 4: GPIO 22 là chân SCL mặc
+                                        // định của I2C và INA219 dùng nó THẬT, còn
+                                        // chân này chưa nối dây. Chân đang dùng
+                                        // thắng chân dự trữ.
 #define VCAN_STATUS_ID          0x200   // BMS -> xe: số liệu hệ thống
 #define VCAN_PACK_ID            0x201   // BMS -> xe: từng bình, ghép kênh
 #define VCAN_PERIOD_MS          100

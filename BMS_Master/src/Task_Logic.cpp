@@ -47,6 +47,19 @@ void Logic_Manager::evaluateProtection() {
         lockSystem("Web Manual Override");
         return;
     }
+
+    /* Mat cam bien dong -> ngat ngay, khong xet gi them. So dong chinh la dau vao
+     * cua phep kiem qua dong ben duoi, nen mat no la mat bao ve. INA219 khong co
+     * chan ALE (INA226 thi co) nen day la lop bao ve DUY NHAT.
+     *
+     * Return som theo dung khuon webForceRelayOff. Khi co tat, luong chay tiep
+     * xuong phan hysteresis binh thuong nen relay van phai cho SOC >= RECOVERY_SOC
+     * moi dong lai. */
+    if (currentSensorFault) {
+        lockSystem("Current Sensor Lost (I2C)");
+        return;
+    }
+
     BMS_Pack_State snaps[TOTAL_PACKS];
     System_Get_Snapshot(snaps);
 

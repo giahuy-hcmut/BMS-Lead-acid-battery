@@ -17,6 +17,7 @@
 // ---- VCAN_STATUS_ID (0x200) · DLC 8 · chu kỳ VCAN_PERIOD_MS ----
 //   byte 0-1  Tổng áp các bình ONLINE   uint16  0.01 V
 //   byte 2-3  Dòng pack                 int16   0.01 A   (>0 = xả)
+//                                       VCAN_CURRENT_INVALID nếu mất cảm biến
 //   byte 4    SOC hệ thống              uint8   1 %      VCAN_SOC_INVALID
 //   byte 5    Trạng thái                uint8   VCAN_State_t
 //   byte 6    Cờ lỗi                    uint8   bitmask VCAN_FLAG_*
@@ -66,6 +67,11 @@ typedef enum {
 
 #define VCAN_SOC_INVALID        0xFF
 #define VCAN_TEMP_INVALID       0x80    // int8 = -128
+#define VCAN_CURRENT_INVALID    (-32768)    // int16 min -> byte 2-3 = 0x80 0x00.
+                                            // Cùng thủ pháp VCAN_TEMP_INVALID: khi
+                                            // mất cảm biến dòng thì báo thẳng
+                                            // "không biết", vì gửi 0 A lúc đó là
+                                            // gửi một con số TRÔNG hợp lý.
 
 class VehicleCAN_Manager {
 private:

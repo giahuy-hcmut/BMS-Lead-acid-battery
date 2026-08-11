@@ -54,6 +54,15 @@ extern volatile bool webSlavesActive;
 extern volatile bool systemLocked;
 extern char faultReason[64];
 
+// Cam bien dong da mat: I2C khong ACK CURRENT_FAULT_LIMIT lan LIEN TIEP.
+// Task_Current ghi · Task_Logic + Task_VehicleCAN doc.
+//
+// Cung khuon systemLocked: MOT nguoi ghi, nhieu nguoi doc, volatile, khong mutex.
+//
+// KHONG nhet vao BMS_Pack_State: day la trang thai TOAN HE, khong phai cua tung
+// binh - vao struct per-pack se phai ghi cung mot gia tri 5 lan.
+extern volatile bool currentSensorFault;
+
 // API Hệ thống
 void System_Data_Init();
 // Sửa lại khai báo hàm ở cuối file
