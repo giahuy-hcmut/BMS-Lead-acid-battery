@@ -14,9 +14,10 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   IEC 60254-1; datasheet: R0 ≈ 13.5 mΩ, cutoff 10.5V, xả max 230A,
   400 chu kỳ @100% DOD).
 - Bench thử: bộ nguồn 400V + tải tạo dòng thật để đo (thay cho xe).
-- Master = ESP32 (repo ../BMS_Master): đo dòng pack bằng ACS758-050B
-  (GPIO32), điều khiển relay (GPIO26), web dashboard (AsyncWebServer +
-  SSE), LCD, ESP-NOW. FreeRTOS.
+- Master = ESP32 (repo ../BMS_Master): đo dòng pack bằng **INA219 + shunt
+  100A/75mV low-side** (I2C 21/22 — mục 6d), điều khiển relay (GPIO26),
+  web dashboard (AsyncWebServer + SSE), CAN xe qua MCP2515 (mục 6b),
+  ESP-NOW. FreeRTOS. LCD **đã bỏ**.
 - Slave = 5 × STM32F103C8T6 (repo này, BMS_Slave): mỗi bình 1 slave,
   CÁCH LY, đo áp bình (ADC + cầu phân áp) + nhiệt (DS18B20), chạy Kalman
   SOC, gửi CAN. Scheduler hợp tác tự viết (delta-list, tick 10ms, dự kiến
@@ -57,18 +58,25 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
     (master↔slave qua MCP2551) và xe (qua MCP2515).
   - **Khối ĐÓNG NGẮT:** contactor 200A (dòng chính) + module relay 5V (đã
     tích hợp cách ly + diode coil-relay) đóng/ngắt COIL contactor, ESP32
-    điều khiển relay + **điện trở SHUNT ở dòng chính (60V high-side) để
-    ESP32 đo dòng**.
+    điều khiển relay + **điện trở SHUNT để ESP32 đo dòng**. Contactor ở
+    cực **DƯƠNG**, shunt ở cực **ÂM** — hai cực khác nhau và đó mới là
+    đúng, xem mục 6d.
   - **Mạng:** CAN (thu thập↔xử lý) · Web + ESP-NOW (người dùng↔xử lý).
   - Cân bằng pin (thụ động/chủ động): KHÔNG làm ở đồ án này (khóa sau).
     Logic hiện tại = nếu SOC/áp các bình LỆCH quá nhiều → NGẮT relay
     (bảo vệ, không cân bằng).
-- **⚠️ CẢM BIẾN DÒNG ĐỔI: ACS758 (Hall) → SHUNT.** Config.h + mô hình
-  nhiễu/bias trong sim đang neo theo ACS758 datasheet → PHẢI neo lại theo
-  SHUNT + amp khi quay lại tinh chỉnh SOC. Shunt high-side 60V → cần amp
-  chịu common-mode 60V (INA240/INA282, KHÔNG dùng INA226 ≤36V). Bias giờ
-  đến từ offset của AMP + trôi nhiệt shunt (không phải offset Hall) —
-  auto-zero VẪN cần, logic không đổi, chỉ khác nguồn bias.
+- **✅ CẢM BIẾN DÒNG: SHUNT + INA219 — XONG firmware master (2026-08-12).**
+  Hall (ACS712/ACS758) **BỊ CẤM** — yêu cầu kỹ thuật của thầy hướng dẫn,
+  không phải sở thích. Đã xoá sạch khỏi code master. **Đừng bao giờ đề
+  xuất Hall lại cho dự án này.**
+  - Chốt **LOW-SIDE ở cực âm pack**, KHÔNG phải high-side như brief cũ ghi.
+    Low-side mới cho phép dùng INA219 (common-mode 0–26V); high-side 60V
+    thì phải INA240/INA282. Chi tiết + số đo thật: **mục 6d**.
+  - Còn nợ phía SLAVE: `simulate.c` vẫn neo `I_NOISE`/`I_BIAS` theo
+    datasheet ACS758 (mục 3). **KHÔNG chặn gì** — shunt êm hơn Hall nên
+    tuning hiện tại là *bảo thủ*, không sai. Neo lại ở GĐ8.
+  - Auto-zero **tụt xuống 🟡**: Hall trôi 0.125A → 0.875A theo nhiệt nên
+    auto-zero là bắt buộc; INA219 đo được trôi ~8mA trên 60°C.
 - **⚠️ DÒNG GIỜ TỚI ~100A** (4 motor BLDC × 25A, xe Murata 4 bánh), KHÔNG
   phải 50A. Khi quay lại SOC: nâng sim I_CAP 50→100A; nâng KF_MAX_CURRENT
   (60A) — nếu không sẽ CHẶN NHẦM dòng thật 100A. Dòng chạy như nhau qua
@@ -191,11 +199,20 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   - Động lực xe: F = Crr·m·g + ½ρ·Cd·A·v² + m·a (+ m·g·sinθ nếu dốc);
     P_elec = P/0.85 (kéo) hoặc P×0.6 (regen); I = P/60V, cap ±50A.
     m=535kg (bản vẽ), Cd=0.4, Crr=0.015 (điển hình, có trích).
-  - Cảm biến (datasheet ACS758-050B): nhiễu I_NOISE=0.15A (từ VNOISE
-    10mV/3σ); bias 0.125A (offset 25°C ±5mV — kịch bản "đã auto-zero")
-    hoặc 0.875A (offset −40°C ±35mV — "chưa calib"). Nhiễu áp
-    V_NOISE=0.05V (bảo thủ — ĐANG treo quyết định hạ về ~0.02V theo
-    vật lý ADC).
+  - Cảm biến — ⚠️ **CÒN NEO THEO ACS758, cảm biến đã bị loại.**
+    `simulate.c` hiện: `I_NOISE=0.15A` (từ VNOISE 10mV/3σ của
+    ACS758-050B); `I_BIAS=0.125A` (offset 25°C ±5mV, "đã auto-zero") hoặc
+    `0.875A` (offset −40°C ±35mV, "chưa calib"). Nhiễu áp `V_NOISE=0.02V`.
+    - **KHÔNG chặn gì**, và lệch theo chiều AN TOÀN: shunt + INA219 đo
+      thật êm hơn Hall ở cả hai mặt (offset 0.023A vs 0.125–0.875A;
+      nhiễu ~0.036A vs 0.15A). Bộ lọc đang giả định nhiễu NHIỀU hơn thực
+      tế ⇒ không phân kỳ, chỉ hơi chậm.
+    - Khi neo lại (GĐ8, sau khi master xong): thay 2 con số theo mục 6d,
+      và **thêm MỘT SỐ HẠNG MỚI** — Hall trôi **cộng** (offset zero theo
+      nhiệt), shunt trôi **nhân** (TCR ảnh hưởng gain, tỉ lệ theo dòng).
+      Đổi giá trị `I_BIAS` là chưa đủ, phải đổi cả *dạng* sai số.
+    - `KF_Q_SOC`/`KF_Q_VRC`/`KF_R_MEAS` được tune bằng CHÍNH bộ quét
+      Monte-Carlo này ⇒ neo lại số thì phải chạy lại quét.
   - Plant lệch filter ~2% (giả lập sai số HPPC) + Q_TRUE_FACTOR=0.90
     (pin chai 18Ah) + WRONG_INIT (init 75% khi thật 100%) — các núm
     kịch bản trong simulate.c.
@@ -379,17 +396,29 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 
 ### Còn lại theo mức
 
-- 🔴 **Hằng số dòng điện đang neo SAI cảm biến.** `Config.h` còn
-  `ACS758_SENSITIVITY 0.0264` / `ACS758_ZERO_VOLTAGE 0` của cảm biến **Hall**,
-  trong khi phần cứng đã chốt đổi sang **SHUNT + amp** (INA240/INA282). Công
-  thức `(avgVolt − zeroVoltage)/sensitivity` sẽ ra dòng SAI ⇒ Kalman ăn số sai.
-  Phải suy lại theo giá trị shunt (mΩ) × hệ số khuếch đại. **CHẶN toàn bộ đường
-  dòng** — không có nó thì HPPC cũng vô nghĩa.
+- ✅ ~~Hằng số dòng điện neo SAI cảm biến~~ — **XONG 2026-08-12.** Hall đã xoá
+  sạch, `Config.h` §6 giờ là INA219 + shunt với **số đo thật** (mục 6d).
+- 🔴 **`CURRENT_SIGN` chưa xác nhận bằng dòng thật** — không có tải trên bàn.
+  Dấu đặt theo cách đấu dây. **PHẢI kiểm lần chạy xe đầu tiên**: SOC phải
+  GIẢM, byte 5 của `0x200` phải = 2 (DISCHARGE), dòng trên web phải DƯƠNG.
+  Sai dấu làm `(packI > MAX_DISCHARGE_CURRENT)` luôn sai ⇒ **bảo vệ quá dòng
+  tắt hoàn toàn**. Bù lại lỗi rất ồn ào (SOC tăng khi đang chạy) nên không
+  trốn được lâu — nhưng phải nằm trong checklist, không để trôi.
 - 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo).
 - 🟠 **9b**: under-volt bù `I·R0`. Ngưỡng 10.5V là số LÚC NGHỈ; ở 100A sụt
   `I·R = 1.35V` nên bình đang nghỉ 11.85V sẽ đọc 10.5V dưới tải → **ngắt
   oan ở ~17% SOC**. Sửa: so `V + I·R0`. Đã có dòng nên làm được.
-- 🟠 **Auto-zero cảm biến dòng lúc nghỉ** — brief cam kết kiến trúc, chưa code.
+- 🟡 **Auto-zero cảm biến dòng lúc nghỉ** — *tụt từ 🟠 xuống 🟡.* Hall trôi
+  offset 0.125A → 0.875A theo nhiệt nên auto-zero là bắt buộc; INA219 đo được
+  trôi ~8mA trên 60°C, và `CURRENT_ZERO_MV` đã đo tĩnh. Vẫn nên có để bù nhiệt
+  điện động mối hàn khi shunt nóng lên, nhưng không còn chặn gì.
+- 🟠 **Lọc RC ở chân INA219** (10Ω mỗi nhánh + 100nF vi sai) + xoắn đôi dây
+  sense. Bench đo được ngoại lai ±150µV (−4.9σ/+6.2σ trên 45k mẫu) **trên bàn
+  yên tĩnh** ⇒ với 4 bộ BLDC băm 100A thì đây là bắt buộc, không phải khuyên.
+- 🟠 **Shunt không cách ly như Hall.** GND của ESP32 giờ nằm trong đường công
+  suất. Hai đường nối tắt qua shunt còn thật: **cáp USB lúc debug** (rút cáp
+  động lực, hoặc laptop chạy pin) và **chassis**. Module MCP2515 chỉ có H/L,
+  không có chân GND ⇒ CAN xe KHÔNG tạo đường nối tắt.
 - 🟠 **EEPROM/NVS cho `activePackCount`** — xem mục 9. Không lưu thì tính năng
   "web nhập số pack" reset về 5 mỗi lần mất điện.
 - 🟠 **Web nhập số pack** — móc `System_GetPackCount()` đã sẵn, chỉ cần đổi thân
@@ -550,6 +579,103 @@ levelling.
 3. **Mất điện giữa lúc ghi** ⇒ dữ liệu rác. Cần 2 bản + checksum. Với SOC thì số
    rác đó đi thẳng vào Kalman.
 
+## 6d. CẢM BIẾN DÒNG — INA219 + SHUNT (xong firmware 2026-08-12)
+
+**Hall (ACS712/ACS758) BỊ CẤM** — yêu cầu kỹ thuật của thầy hướng dẫn. Đã xoá
+sạch khỏi code. **Đừng đề xuất Hall lại.** Brief cũ ghi "shunt high-side 60V →
+INA240/INA282" — **câu đó đã bị thay**, xem dưới.
+
+### Vì sao LOW-SIDE
+
+Common-mode của INA219 chỉ **0–26V**. Pack 60V (72–75V lúc sạc) từ high-side sẽ
+phá chip. Đặt shunt ở cực âm giữ common-mode gần 0 ⇒ INA219 dùng được.
+
+Giới hạn phải ghi trong báo cáo: chiều **regen** đẩy một ngõ vào xuống **−56mV ở
+75A** — ngoài dải danh định (cận dưới 0V) nhưng trong absolute max −0.3V. GND của
+ESP32 bám ở đầu `IN−` (phía cực âm pack) nên **chiều xả — chiều dòng lớn — nằm
+trong dải hợp lệ**. Chỉ INA228/INA238 (−0.3…85V) mới hết hẳn vấn đề này.
+
+### Contactor cực DƯƠNG, shunt cực ÂM — khác cực mới đúng
+
+Chassis bond vào cực âm. Contactor ở cực âm thì khi "tắt", **mọi dây dương trong
+xe vẫn còn +60V so với chassis** và contactor không cản được đường sự cố đó. Ở
+cực dương thì mở ra là hạ nguồn chết hẳn.
+
+Lợi ích kèm theo: contactor ở cực dương giữ cho **mốc đo của INA219 không bao giờ
+bị ngắt**, bất kể contactor đóng hay mở. Nếu cả hai ở cực âm thì mở contactor là
+cắt luôn đường mass của phép đo.
+
+Contactor cơ điện có cuộn hút cách ly với tiếp điểm ⇒ lý lẽ "low-side dễ lái hơn"
+KHÔNG áp dụng (chỉ đúng với MOSFET).
+
+🔴 **Đường sạc phải nằm TRONG vòng đo.** Cực âm bộ sạc nối vào **điểm mass sao**
+(phía chassis của shunt), KHÔNG nối thẳng cực âm pack — nối thẳng thì dòng sạc đi
+tắt qua shunt, BMS không thấy gì, 5 slave nhận `I = 0` suốt lúc sạc. Cùng lý do:
+mọi thứ tiêu thụ điện từ pack lấy mass ở **điểm sao**. Chỉ 2 thứ được bám vào cực
+âm pack: **shunt** và **GND của INA219/ESP32**.
+
+Còn thiếu: **precharge** (tụ DC-link của 4 bộ BLDC ⇒ dòng vào đỉnh hàn dính tiếp
+điểm) và **cầu chì HRC** ở cực dương, trước contactor.
+
+### Số ĐO THẬT — bench `Code/BENCH_INA219` (2026-08-12)
+
+Shunt **100A / 75mV = 0.75mΩ, class 0.5**. Module INA219 đã **gỡ `R100`** (0.1Ω
+trên bo — để lại thì nó song song 2 dây sense và rút 0.75A qua dây dành cho µV).
+
+| Thông số | Đo được | Ở 100A | Ảnh hưởng SOC |
+|---|---|---|---|
+| **Thang đo** (PGA /8) | 320mV *(kẹp đúng 320.000, sd=0)* | **±427A** | dư **277A** trên trip 150A |
+| **Offset** (đã hàn shunt) | **−17.5µV** | −23.3mA | **0.117 %/h** trên 20Ah |
+| Offset datasheet worst (85°C) | ±100µV | ±133mA | 0.665 %/h |
+| Gain INA219 datasheet | ±1% | ±1.0A | tỉ lệ dòng |
+| Class shunt | ±0.5% | ±0.5A | tỉ lệ dòng |
+| **Gain tổng worst case** | **±1.5%** | ±1.5A | 1.5% Coulomb |
+| Nhiễu 1 mẫu | 27.2µV | 36.3mA | → 12.8mA sau lọc 8 mẫu |
+| Bước lượng tử | 10µV | 13.3mA | bỏ qua |
+| Chu kỳ lấy mẫu | 3.0ms | | vừa nhịp CAN 5ms |
+
+Hai con **tốt hơn ước lượng ban đầu**: trôi SOC 0.158→**0.117 %/h**, độ phân giải
+107→**13.3mA** (bước 10µV giữ nguyên cả ở PGA /8, mịn gấp 8 lần giả định "12-bit
+trên toàn thang").
+
+### Ba điều bench dạy được mà tra datasheet không ra
+
+1. **Thang đo phải ĐO, không tin tài liệu.** Cấp 3.27V vi sai → số kẹp ở đúng
+   `320.000` với `sd = 0` ⇒ PGA /8 xác nhận. Nếu nó hoá ra /2 (107A) thì ngưỡng
+   trip 150A **không bao giờ đạt tới** và bảo vệ quá dòng chết âm thầm.
+2. **Gain chỉ đo được TRƯỚC khi hàn shunt.** Sau đó không còn cách nào tách sai
+   số shunt khỏi sai số gain của chip. Đo bằng cầu phân áp 2 trở đã biết → khớp
+   vôn kế trong 1%.
+3. **I2C hỏng KHÔNG chỉ trả về 0.** Rút dây SDA lúc đang chạy: một lần đọc hỏng
+   trả về **−168.21mV = −224A** và **đi qua được**, vì probe và read là HAI giao
+   dịch I2C riêng. Range check vô dụng (thanh ghi 16-bit ⇒ rác nằm trong ±327mV).
+   ⇒ `Task_Current` dùng **trung bình CẮT BIÊN** (8 mẫu, bỏ min+max, lấy 6 mẫu
+   giữa): loại mẫu lẻ mà không cần biết vì sao nó xấu — dùng chung cho rác I2C và
+   gai EMI từ BLDC.
+
+Hai lần "lỗi gain" trước đó đều là **lỗi mạch thử, không phải chip**: `R100` thật
+≈0.103Ω (+3%), và cầu phân áp trở kháng cao bị sụt vì ngõ vào INA219 hút ~340µA
+(−9%). **Hai sai số NGƯỢC DẤU chính là bằng chứng nó chưa bao giờ là gain** — lỗi
+gain là hệ số nhân cố định, phải cùng dấu ở cả hai phép thử. Không áp dụng cho
+mạch thật: shunt 0.75mΩ có trở kháng nguồn gần bằng 0.
+
+### Mất cảm biến ⇒ NGẮT RELAY
+
+`getShuntVoltage_mV()` trả `0.0` **cả khi dòng thật bằng 0 lẫn khi bus chết**, và
+thư viện không báo lỗi gì. Một dây SDA tuột sẽ nạp `0 A` cho 5 bộ Kalman VÀ so
+`0 > 150A` ⇒ **hai thất bại, cả hai im lặng**.
+
+`Task_Current` probe địa chỉ mỗi vòng bằng `Wire.beginTransmission/endTransmission`
+(thuần Wire API, không cần biết thanh ghi). 20 lần không ACK liên tiếp ⇒ cờ
+`currentSensorFault` (trong `System_Data`, khuôn 1-ghi/N-đọc như `systemLocked`,
+khởi tạo **TRUE** để fail-safe) ⇒ `Task_Logic` ngắt relay + `faultReason`, và
+`Task_VehicleCAN` bật cờ `0x80` + byte 2-3 = `VCAN_CURRENT_INVALID` + state FAULT.
+
+INA219 **không có chân ALE** nên đường mềm này là lớp DUY NHẤT. INA226 có `ALE`
+(trip quá dòng bằng phần cứng, sống sót cả khi I2C chết) — nhưng thang cố định
+±81.92mV ⇒ chỉ **109A** trên shunt này, dưới cả đỉnh tăng tốc 100A. Đó là lý do
+chọn INA219: **nó có PGA**, INA226 thì không.
+
 ## 7. QUY ƯỚC & NGUYÊN TẮC LÀM VIỆC VỚI NGƯỜI DÙNG NÀY
 
 - Tiếng Việt khi trao đổi; tiếng Anh trong code/file. Sơ đồ dùng Mermaid.
@@ -568,11 +694,25 @@ levelling.
   **Nguyên tắc anh chốt:** thêm chức năng = thêm MỘT task, task snapshot rồi
   tự đóng gói; kho chỉ GIỮ, không tính; chỉ nhấc hàm lên `System_*` khi có
   người gọi thứ hai. Đừng nhấc trước, đừng dựng frame chưa ai đọc.
+- **Ràng buộc phần cứng từ THẦY HƯỚNG DẪN là chốt, không bàn lại.** Ví dụ đang
+  hiệu lực: **shunt, không Hall**. AI đã tốn nhiều lượt đề xuất INA226 rồi
+  INA228/238 trong khi việc cần làm là dùng cái đang có. Khi người dùng nói
+  "đó là yêu cầu của thầy" ⇒ ngừng so sánh linh kiện, làm cho chạy.
+- **Đừng đưa 5 phương án — chọn 1 rồi nói lý do.** Người dùng đã nói thẳng
+  "Quá phức tạp, tôi thấy rất rối" và "tại sao tôi thấy quá nhiều vấn đề bạn
+  liệt kê vậy". Cách chữa đã hiệu quả: **tách danh sách thành nhóm** (bug có
+  sẵn / hệ quả của thay đổi / không liên quan) và chỉ ra **cái nào chặn**.
+- **Đo, đừng suy.** Bài học đắt nhất của session cảm biến dòng: AI suy thang
+  đo từ độ phân giải (sai), suy sai số gain từ tính toán trở (sai 2 lần vì
+  mạch thử). Cả ba lần đều được giải quyết bằng MỘT phép đo. Với thông số
+  liên quan an toàn thì đo là bắt buộc, không tra tài liệu thư viện.
 - Trình độ: sinh viên nhúng, nắm cơ bản; giải thích bằng ví von + con số
   cụ thể; hay hỏi "tại sao" sâu nhiều tầng — trả lời thẳng, nhận sai khi
-  bị bắt lỗi đúng.
+  bị bắt lỗi đúng. Hỏi lại định nghĩa cơ bản ("PGA là gì") **không phải** vì
+  không theo được — mà vì AI đã dùng thuật ngữ chưa giải thích. Giải thích
+  bằng ví von quen (thang đo đồng hồ vạn năng, cân điện tử bước 0.1 kg).
 - Kết quả tốt phải kèm giới hạn: cái gì đã chứng minh, cái gì còn chờ
-  (HPPC, auto-zero, đo nhiễu thật).
+  (HPPC, `CURRENT_SIGN`, đo nhiễu thật trên xe).
 
 ## 8. FILE QUAN TRỌNG
 
@@ -596,14 +736,27 @@ levelling.
   qua MCP2515 (2 frame `0x200`/`0x201`, xem mục 6b).
 - `BMS_Master/src/Task_CAN.cpp` — bus nội bộ: phát `0x100` chở dòng 5 ms,
   nhận frame slave (giải mã áp / **SOC byte 4** / nhiệt / cờ lỗi).
-- `BMS_Master/src/Task_Current.cpp` — CHỈ đo dòng (Coulomb cũ đã gỡ).
-- `BMS_Master/src/Task_Logic.cpp` — bảo vệ + relay + hysteresis.
+- `BMS_Master/src/Task_Current.cpp` + `include/Task_Current.h` — CHỈ đo dòng
+  (Coulomb cũ đã gỡ). INA219 qua I2C, lọc **cắt biên** 8 mẫu × 3 ms, phát hiện
+  mất I2C → `currentSensorFault`. Xem mục 6d.
+- `BENCH_INA219/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời) đã kiểm chứng cảm
+  biến trước khi sửa master. Sinh ra mọi con số trong mục 6d. Giữ lại: nó là nơi
+  duy nhất đo được thang đo và gain một cách độc lập.
+- `BMS_Master/src/Task_Logic.cpp` — bảo vệ + relay + hysteresis. `currentSensorFault`
+  → ngắt relay ngay (return sớm, cùng khuôn `webForceRelayOff`).
 - `BMS_Master/src/Task_WebServer.cpp` + `include/Web_HTML.h` — dashboard;
   JSON có SOC RIÊNG từng bình, xử lý `soc = −1` thành `--`.
-- `BMS_Master/include/Config.h` — mục 8 = chân/ID/chu kỳ CAN xe.
-  ⚠️ mục 6 còn hằng số cảm biến **Hall** trong khi phần cứng đã đổi sang shunt.
+- `BMS_Master/include/Config.h` — mục 6 = INA219 + shunt (**số đo thật** từ
+  bench, kèm lý do low-side); mục 8 = chân/ID/chu kỳ CAN xe.
+- **Bản đồ chân ESP32 (sau 2026-08-12):** `16/17` TWAI nội bộ · `21/22` **I2C →
+  INA219** · `5` MCP2515 CS · `4` MCP2515 INT *(dời từ 22 vì GPIO 22 là SCL mặc
+  định và INA219 dùng thật)* · `18/19/23` VSPI · `26` relay · `32` **đã giải
+  phóng** (của ACS758 cũ).
 - Đã XOÁ: `Task_LCD.*` (master không dùng LCD), `BATTERY_CAPACITY_AH`,
-  `VOLTAGE_SYS_*` (chết theo Coulomb counter).
+  `VOLTAGE_SYS_*` (chết theo Coulomb counter), `PIN_CURRENT_SENSOR` +
+  `ACS758_SENSITIVITY` / `ACS758_ZERO_VOLTAGE` / `ACS758_ZERO_CURRENT`
+  (chết theo cảm biến Hall — thầy yêu cầu shunt).
 - Tham khảo: PDF Thanh Trung (Kalman SOC 403V), bản vẽ "Bố trí chung xe
   Murata.pdf", Excel chuẩn UnitTest_FormalVerification, datasheet CSB
-  EVX12200 + ACS758 (đã tải, số đã trích trong tài liệu này).
+  EVX12200 + INA219 (SBOS448) — số đã trích trong tài liệu này. Datasheet
+  ACS758 **không còn dùng**, chỉ còn là mốc so sánh cho mục 3.
