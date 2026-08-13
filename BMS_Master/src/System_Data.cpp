@@ -4,8 +4,8 @@
 BMS_Pack_State globalPacks[TOTAL_PACKS];
 SemaphoreHandle_t dataMutex;
 QueueHandle_t canQueue;
-volatile bool webForceRelayOff = false;
-volatile bool webSlavesActive  = true;
+static volatile bool s_webForceRelayOff = false;   // ghi qua System_Set_RelayOverride
+static volatile bool s_webSlavesActive  = true;    // ghi qua System_Set_SlavesActive
 volatile bool systemLocked     = false;
 char faultReason[64]           = "";
 
@@ -13,6 +13,13 @@ char faultReason[64]           = "";
  * mat; CurrentSensor_Manager::init() xoa co khi ina.begin() thanh cong. Relay cung
  * bat dau o trang thai NGAT (Task_Logic::init) nen khong co khe ho nao. */
 volatile bool currentSensorFault = true;
+
+// --- Web control flags: static + accessor (dong goi, thay cho extern) ---
+// bool 1-tu 32-bit -> doc/ghi atomic tren ESP32, khong can mutex.
+void System_Set_RelayOverride(bool off) { s_webForceRelayOff = off; }
+bool System_Get_RelayOverride(void)     { return s_webForceRelayOff; }
+void System_Set_SlavesActive(bool on)   { s_webSlavesActive = on; }
+bool System_Get_SlavesActive(void)      { return s_webSlavesActive; }
 
 // 2. Khởi tạo
 void System_Data_Init() {

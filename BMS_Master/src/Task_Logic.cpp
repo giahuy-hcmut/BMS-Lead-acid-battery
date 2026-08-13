@@ -43,7 +43,7 @@ void Logic_Manager::unlockSystem() {
 
 // BỘ NÃO ĐÁNH GIÁ AN TOÀN - Chạy mỗi 100ms
 void Logic_Manager::evaluateProtection() {
-    if (webForceRelayOff) {
+    if (System_Get_RelayOverride()) {
         lockSystem("Web Manual Override");
         return;
     }

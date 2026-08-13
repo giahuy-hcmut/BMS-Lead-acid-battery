@@ -46,9 +46,12 @@ extern BMS_Pack_State globalPacks[TOTAL_PACKS];
 extern SemaphoreHandle_t dataMutex;   
 extern QueueHandle_t canQueue;        
 
-// Web control flags (set by Task_WebServer, read by Task_Logic / Task_CAN)
-extern volatile bool webForceRelayOff;
-extern volatile bool webSlavesActive;
+// Web control flags: private static in System_Data.cpp, accessed via API only.
+// Written by Task_WebServer, read by Task_Logic / Task_CAN / Task_VehicleCAN.
+void System_Set_RelayOverride(bool off);   // relay manual override (true = ngat)
+bool System_Get_RelayOverride(void);
+void System_Set_SlavesActive(bool on);     // cho phep gui 0x100 (danh thuc slave)
+bool System_Get_SlavesActive(void);
 
 // Protection state (set by Task_Logic, read by Task_WebServer)
 extern volatile bool systemLocked;

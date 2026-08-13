@@ -135,7 +135,7 @@ void Task_CAN_Run(void *pvParameters) {
         /* webSlavesActive stays: clearing it from the web UI is still the way
          * to let the slaves fall asleep, since 0x100 doubles as heartbeat. */
         if ((xTaskGetTickCount() - lastFrame) >= pdMS_TO_TICKS(CAN_MASTER_INTERVAL_MS)) {
-            if (webSlavesActive) myCanBus.sendCurrentFrame(System_Get_Current());
+            if (System_Get_SlavesActive()) myCanBus.sendCurrentFrame(System_Get_Current());
             lastFrame = xTaskGetTickCount();
         }
         vTaskDelay(pdMS_TO_TICKS(1));

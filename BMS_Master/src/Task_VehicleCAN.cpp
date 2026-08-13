@@ -60,7 +60,7 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
 
     if (!allOnline)                    { flags |= VCAN_FLAG_SLAVE_LOST;   }
     if (systemLocked)                  { flags |= VCAN_FLAG_RELAY_OPEN;   }
-    if (webForceRelayOff)              { flags |= VCAN_FLAG_MANUAL_OFF;   }
+    if (System_Get_RelayOverride())    { flags |= VCAN_FLAG_MANUAL_OFF;   }
     if (currentSensorFault)            { flags |= VCAN_FLAG_BMS_INTERNAL; }
 
     /* Bao qua dong CHI khi so dong con tin duoc. Bao "qua dong" dua tren mot gia

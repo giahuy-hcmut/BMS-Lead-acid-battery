@@ -30,14 +30,14 @@ bool WebServer_Manager::init() {
 
     server->on("/relay", HTTP_POST, [](AsyncWebServerRequest *request) {
         if (request->hasParam("state", true)) {
-            webForceRelayOff = (request->getParam("state", true)->value() == "off");
+            System_Set_RelayOverride(request->getParam("state", true)->value() == "off");
         }
         request->send(200, "text/plain", "OK");
     });
 
     server->on("/slaves", HTTP_POST, [](AsyncWebServerRequest *request) {
         if (request->hasParam("state", true)) {
-            webSlavesActive = (request->getParam("state", true)->value() == "on");
+            System_Set_SlavesActive(request->getParam("state", true)->value() == "on");
         }
         request->send(200, "text/plain", "OK");
     });
@@ -91,8 +91,8 @@ String WebServer_Manager::buildJsonString() {
     
     // BỔ SUNG: % Pin tổng
     json += "\"soc\":"; json += String(sysSOC); json += ",";
-    json += "\"relayOff\":";     json += webForceRelayOff ? "true" : "false"; json += ",";
-    json += "\"slavesActive\":"; json += webSlavesActive  ? "true" : "false"; json += ",";
+    json += "\"relayOff\":";     json += System_Get_RelayOverride() ? "true" : "false"; json += ",";
+    json += "\"slavesActive\":"; json += System_Get_SlavesActive()   ? "true" : "false"; json += ",";
     json += "\"locked\":";       json += systemLocked      ? "true" : "false"; json += ",";
     json += "\"fault\":\"";      json += faultReason;                          json += "\"";
 
