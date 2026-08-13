@@ -1,3 +1,0 @@
-../Core/Src/Shared_Data.c:31:6:BMS_Data_SetVoltage	16	static
-../Core/Src/Shared_Data.c:37:6:BMS_Data_SetTemp	16	static
-../Core/Src/Shared_Data.c:43:6:BMS_Data_GetSnapshot	32	static,ignoring_inline_asm

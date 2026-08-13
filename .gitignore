@@ -1,1 +1,10 @@
 .aider*
+
+# CubeIDE build output (regenerated on every build)
+Debug/
+
+# PlatformIO build output
+.pio/
+
+# Archives
+*.zip
