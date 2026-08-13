@@ -144,7 +144,7 @@ int main(void)
   //    chạy CUỐI, nhường SOC lấy update trước.
   SCH_Add_Task(Task_Temperature_Run, 10, 1000, 0);
 
-  //SCH_Add_Task(Task_Sleep_Run, 0, 1000);
+  SCH_Add_Task(Task_Sleep_Run, 0, 1000,0);
   /* USER CODE END 2 */
 
   /* Infinite loop */

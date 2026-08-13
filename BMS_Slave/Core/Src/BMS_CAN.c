@@ -47,9 +47,12 @@ void BMS_CAN_InitRx(void) {
     sFilterConfig.FilterBank           = 0;
     sFilterConfig.FilterMode           = CAN_FILTERMODE_IDMASK;
     sFilterConfig.FilterScale          = CAN_FILTERSCALE_32BIT;
-    sFilterConfig.FilterIdHigh         = 0x0000;
+    /* Chi nhan frame 0x100 tu master. Mask mo (0x0000) truoc day nhan MOI ID,
+     * nen frame cua cac slave anh em cung sinh ngat RX -> danh thuc WFI cua
+     * Task_Sleep -> slave khong bao gio ngu duoc du master da ngung 0x100. */
+    sFilterConfig.FilterIdHigh         = (CAN_MASTER_ID << 5);  // 0x100<<5 = 0x2000
     sFilterConfig.FilterIdLow          = 0x0000;
-    sFilterConfig.FilterMaskIdHigh     = 0x0000;
+    sFilterConfig.FilterMaskIdHigh     = (0x7FF << 5);          // 0xFFE0 - khop du 11 bit ID
     sFilterConfig.FilterMaskIdLow      = 0x0000;
     sFilterConfig.FilterFIFOAssignment = CAN_RX_FIFO0;
     sFilterConfig.FilterActivation     = ENABLE;
