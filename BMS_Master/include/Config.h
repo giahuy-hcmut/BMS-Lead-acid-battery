@@ -20,6 +20,9 @@
 #define CAN_TX_TIMEOUT_MS       10      // Timeout twai_transmit (ms)
 #define CAN_RX_POLL_TIMEOUT_MS  0       // twai_receive KHÔNG chặn - xem Task_CAN.cpp
 
+// Nhịp quét bảo vệ (Task_Logic). 10ms: quá dòng phát hiện <=10ms, vẫn nhường CPU.
+#define PROTECTION_PERIOD_MS    10
+
 // --- 3. TIMEOUT SLAVE ---
 // Không nhận frame của một slave trong khoảng này -> coi là mất kết nối
 // (System_Get_Snapshot() đặt isConnected = false, Task_Logic ngắt relay).

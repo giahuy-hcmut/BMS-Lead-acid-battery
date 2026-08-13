@@ -2,6 +2,7 @@
 #include "System_Data.h"
 #include "Task_CAN.h"
 #include "Task_Logic.h"
+#include "Task_Ingest.h"
 #include "Task_Terminal.h"
 #include "Task_EspNow.h" // [ĐÃ THAY ĐỔI: Include Task ESP-NOW]
 #include "Task_WebServer.h" // <--- THÊM DÒNG NÀY
@@ -18,8 +19,9 @@ void setup() {
     // Task CAN (Priority 5)
     xTaskCreatePinnedToCore(Task_CAN_Run, "CAN", 4096, NULL, 5, NULL, 1);
     
-    // Task Logic (Priority 4)
-    xTaskCreatePinnedToCore(Task_Logic_Run, "Logic", 4096, NULL, 4, NULL, 1);
+    // Task Ingest (nhập frame -> kho, event-driven) + Task Logic (bảo vệ, 10ms) - Priority 4
+    xTaskCreatePinnedToCore(Task_Ingest_Run, "Ingest",  2048, NULL, 4, NULL, 1);
+    xTaskCreatePinnedToCore(Task_Logic_Run,  "Protect", 4096, NULL, 4, NULL, 1);
     xTaskCreatePinnedToCore(Task_Current_Run, "Current", 4096, NULL, 4, NULL, 1);
 
     // Task CAN xe qua MCP2515 (Priority 3). Dưới Logic vì bảo vệ phải thắng;

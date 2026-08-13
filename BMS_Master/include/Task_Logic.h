@@ -13,8 +13,7 @@ private:
 public:
     Logic_Manager();
     void init();
-    void processMessage(BMS_Message_t &msg); //cất dữ liệu vào kho System_Data (sử dụng Mutex để khóa an toàn).
-    void evaluateProtection(); // Hàm liên tục quét lỗi hệ thống
+    void evaluateProtection(); // Hàm quét lỗi hệ thống theo nhịp cố định
 };
 
 void Task_Logic_Run(void *pvParameters);

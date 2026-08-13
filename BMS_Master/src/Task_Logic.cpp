@@ -14,11 +14,6 @@ void Logic_Manager::init() {
     Serial.println("[LOGIC] Manager Initialized. Relay Configured.");
 }
 
-void Logic_Manager::processMessage(BMS_Message_t &msg) {
-    System_Update_Pack(msg.can_id, msg.voltage, msg.temperature,
-                       msg.status, msg.soc);
-}
-
 // Hàm cắt điện và in cảnh báo
 void Logic_Manager::lockSystem(const char* reason) {
     digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF);
@@ -120,22 +115,16 @@ void Logic_Manager::evaluateProtection() {
 void Task_Logic_Run(void *pvParameters) {
     Logic_Manager myLogic;
     myLogic.init();
-    
-    BMS_Message_t msg;
 
-    // Chờ 2 giây để các mạch Slave khởi động và gửi dữ liệu CAN đầu tiên
+    // Chờ 2 giây để các mạch Slave khởi động và gửi frame CAN đầu tiên,
+    // tránh trip oan lúc boot khi chưa bình nào online.
     vTaskDelay(pdMS_TO_TICKS(2000));
 
+    // Task này giờ CHỈ giám sát an toàn. Việc nhập frame -> kho đã tách sang
+    // Task_Ingest. Quét theo nhịp CỐ ĐỊNH (không còn ăn ké timeout của queue):
+    // nguồn đổi nhanh nhất ở 5ms (dòng) nên 10ms là đủ, vẫn nhường CPU.
     while (1) {
-        // [ĐÃ THAY ĐỔI QUAN TRỌNG] 
-        // Đợi tin nhắn CAN tối đa 100ms. 
-        // Nếu có tin nhắn: Xử lý ngay lập tức (Real-time).
-        // Nếu không có: Thoát ra chạy tiếp để đi đánh giá an toàn (Timeout protection).
-        if (xQueueReceive(canQueue, &msg, pdMS_TO_TICKS(100)) == pdTRUE) {
-            myLogic.processMessage(msg);
-        }
-        
-        // Quét bảo vệ liên tục
         myLogic.evaluateProtection();
+        vTaskDelay(pdMS_TO_TICKS(PROTECTION_PERIOD_MS));
     }
 }
