@@ -32,6 +32,8 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   đơn vị A×100** — giống byte 2-3 của frame slave. Master clamp ±320A
   trước khi scale (int16 tối đa ±327.67A, tràn sẽ đảo dấu).
   Slave sleep (WFI) sau 5s không nhận 0x100 — Task_Sleep ĐÃ BẬT trong main.c.
+  Filter CAN đã HẸP về đúng 0x100 (2026-08-13): trước đó mask mở (0x0000) nhận
+  mọi ID nên frame slave anh em đánh thức WFI → slave không bao giờ ngủ được.
   Verify: giá trị test 12.34A tới slave **chính xác**; Kalman ổn định ở
   innovation 0.34mV (chứng minh cả chuỗi encode→bus→ISR→kho→R0 bù nhiệt→OCV).
 - Hiện trạng firmware slave: **KHÔNG CÒN STUB NÀO**.
@@ -394,6 +396,25 @@ Cả ba **không khoá mutex** — nhận sẵn snapshot người gọi đã l�
 `LCD_TIMEOUT` đổi tên **`SLAVE_TIMEOUT_MS`** — nó chưa bao giờ liên quan LCD, đó
 là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 
+### ✅ Tách task + đóng gói cờ (master, 2026-08-13)
+
+- **`Task_Logic` tách đôi:** `Task_Ingest` (event-driven, block `xQueueReceive`
+  → `System_Update_Pack`) lo NHẬP kho; `Task_Logic` giờ CHỈ giám sát an toàn,
+  quét mỗi `PROTECTION_PERIOD_MS`=10ms bằng `vTaskDelay` (bỏ kiểu ăn ké timeout
+  queue). Producer/consumer của kho tách rời; mất slave vẫn phát hiện qua
+  timestamp trong kho, độc lập queue. Lý do KHÔNG "đọc liên tục": busy-loop đốt
+  100% CPU + không nhanh hơn tốc độ nguồn (dòng đổi 5ms).
+- **Cờ web đóng gói:** `webForceRelayOff`/`webSlavesActive` bỏ `extern`, chuyển
+  `static` trong System_Data.cpp + `System_Set/Get_RelayOverride` /
+  `System_Set/Get_SlavesActive` (bool atomic 32-bit → không mutex). Đúng luật
+  "không extern biến trong .h" (như mục 5b bên slave).
+- **KHÔNG chuyển slave sang FreeRTOS** (đã cân nhắc kỹ): master DÙNG FreeRTOS
+  (ESP32), slave GIỮ cooperative (F103). Tải CPU slave ~6% (rảnh 94%);
+  cooperative + ưu tiên không chiếm quyền; ISR do NVIC quản (RTOS không cứu
+  "bão ISR"); FreeRTOS chỉ hơn ở latency (~µs preempt vs chờ task xong ~5ms) mà
+  tốn RAM 20KB + mutex khắp nơi. Giới hạn thật của slave = latency xấu nhất
+  ~5ms do DS18B20 blocking (1-wire) — cần thì làm non-blocking, không thay RTOS.
+
 ### Còn lại theo mức
 
 - ✅ ~~Hằng số dòng điện neo SAI cảm biến~~ — **XONG 2026-08-12.** Hall đã xoá
@@ -404,7 +425,14 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
   Sai dấu làm `(packI > MAX_DISCHARGE_CURRENT)` luôn sai ⇒ **bảo vệ quá dòng
   tắt hoàn toàn**. Bù lại lỗi rất ồn ào (SOC tăng khi đang chạy) nên không
   trốn được lâu — nhưng phải nằm trong checklist, không để trôi.
-- 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo).
+- 🔴 **Nạp firmware mới cho slave 1-4** — hiện chỉ board `SLAVE_INDEX=0` (0x103)
+  chạy bản mới: đo áp thật + Kalman, node nhận CAN thấy SOC=58% đúng như mong đợi.
+  Bốn board 0x104-0x107 vẫn là **code CŨ** (áp cố định 12.60V, SOC=0) — không phải
+  lỗi, chỉ là chưa nạp. Nhớ hệ quả trong lúc đó: `System_MinSoc` = min = **0**
+  ⇒ Task_Logic ngắt relay ⇒ 0x200 báo `state=FAULT` + `RELAY_OPEN`. Bảo vệ phản
+  ứng ĐÚNG với dữ liệu nó thấy; sẽ tự hết khi 4 board kia lên bản mới.
+- 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo) — làm cùng lúc
+  với việc nạp bản mới ở trên.
 - 🟠 **9b**: under-volt bù `I·R0`. Ngưỡng 10.5V là số LÚC NGHỈ; ở 100A sụt
   `I·R = 1.35V` nên bình đang nghỉ 11.85V sẽ đọc 10.5V dưới tải → **ngắt
   oan ở ~17% SOC**. Sửa: so `V + I·R0`. Đã có dòng nên làm được.
@@ -432,8 +460,10 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
   thấp giả. **Người dùng đã chọn BỎ QUA.**
 - 🟡 Mạng: `AutoRetransmission=DISABLE` (one-shot, mất frame khi thua
   arbitration — master ID 0x100 < slave nên master luôn thắng); không kiểm
-  return `BMS_CAN_Transmit`; filter nhận MỌI ID thay vì chỉ 0x100; thứ tự
-  `HAL_CAN_Start` trước `ConfigFilter`. **Đã hoãn.**
+  return `BMS_CAN_Transmit`; thứ tự `HAL_CAN_Start` trước `ConfigFilter`.
+  **Đã hoãn.** — ✅ Filter nhận MỌI ID → **ĐÃ SỬA 2026-08-13**: mask hẹp về đúng
+  `0x100` (`FilterIdHigh=0x100<<5`, `FilterMaskIdHigh=0x7FF<<5`), nên frame slave
+  anh em không sinh ngắt RX đánh thức WFI → slave mới ngủ được.
 - 🟡 Byte 7 frame slave còn trống — chở được `SCH_GetOverrunCount()`.
 - 🟡 GĐ8 bench: HPPC (R0/R1/C1 theo SOC), xả tham chiếu, đo variance nhiễu
   ADC thật (thay KF_R_MEAS), xác nhận OCV đầy/cạn.
@@ -450,7 +480,7 @@ bị phá. Nghĩa là **với bình này, regen gần như không dùng được
 Cách ĐÚNG để chặn: gửi frame "giới hạn dòng sạc cho phép" lên CAN xe để xe tự
 giới hạn — **chưa làm** vì chưa có xe nào đọc.
 
-## 6b. CAN XE — MCP2515 qua SPI (xong firmware 2026-08-11)
+## 6b. CAN XE — MCP2515 qua SPI (firmware 2026-08-11 · **ĐÃ VERIFY THẬT 2026-08-14**)
 
 **Vì sao cần chip ngoài:** ESP32 chỉ có **MỘT** bộ TWAI và nó đã cõng bus nội bộ
 master↔slave. Bus xe là mạng thứ hai ⇒ bắt buộc controller CAN thứ hai.
@@ -507,18 +537,18 @@ Nguyên tắc bố trí: **mỗi task một cụm chân liền nhau**.
 |---|---|---|
 | `16` TX · `17` RX | TWAI — bus **nội bộ** ↔ slave | Task_CAN |
 | `5` CS · `18` SCK · `19` MISO · `23` MOSI | SPI — bus **xe** qua MCP2515 | Task_VehicleCAN |
-| `22` | `INT` của MCP2515 — **khai chỗ, CHƯA nối** | Task_VehicleCAN |
+| `4` | `INT` của MCP2515 — **khai chỗ, CHƯA nối** (chỉ GỬI) | Task_VehicleCAN |
 | `26` | Relay tổng | Task_Logic |
 | `32` | ADC dòng — **phải là ADC1**, ADC2 không dùng được khi WiFi bật | Task_Current |
-| `21` · `4` · `25` · `27` · `33-35` | **trống** | |
+| `21` · `22` | I2C → **INA219** (cảm biến dòng) | Task_Current |
+| `25` · `27` · `33-35` | **trống** | |
 
 Dùng **chân VSPI mặc định** nên KHÔNG phải gọi `SPI.begin()` với chân tuỳ chọn —
 bớt một chỗ sai, và khớp mọi ví dụ của thư viện.
 
-`INT` đặt ở **22** (vừa giải phóng từ I2C) chứ không phải GPIO 4: trên header
-DevKit v1, chân 4 nằm ngay dưới 16/17 của TWAI ⇒ chân của **hai bus CAN khác
-nhau** sẽ nằm xen kẽ, dễ cắm lẫn khi có 5 slave + 1 bus xe cùng lúc. Ở 22 thì
-toàn bộ cụm CAN xe nằm gọn trong vùng `5…23`, TWAI ở ngay dưới.
+`INT` đặt ở **GPIO 4**: bản trước tính đặt ở 22 (vừa giải phóng từ LCD I2C) nhưng
+**INA219 đã lấy 21/22 làm I2C** (mục 6d) ⇒ dời về 4. Vẫn CHƯA nối, chưa dùng —
+master hiện chỉ GỬI lên xe.
 
 ### Module HW-184 — ba cái bẫy
 
@@ -545,9 +575,57 @@ bounds check chặn; slave chỉ xét `StdId == 0x100` → bỏ qua. Không ai b
 Chỉ cần **RX**, không cần TX: transceiver dội TX lên RX (cơ chế bit-monitoring)
 nên RX thấy toàn bộ traffic trên bus.
 
+### ✅ ĐÃ VERIFY BẰNG NODE NHẬN THẬT (2026-08-14)
+
+Dựng **node "xe" giả lập**: ESP32 thứ 2 + **MCP2551** (ESP32 có TWAI tích hợp nên
+chỉ cần transceiver). Nạp `Code/VCAN_RX_TEST/` → **nhận + giải mã đúng cả hai
+frame**. Byte thô kiểm chéo tay khớp 100%:
+
+```
+ID 0x200: 18 83 00 00 00 04 20 14
+  -> 0x1883=6275 => 62.75V · I=0 · SOC=0 · state=4 FAULT · flags=0x20 RELAY_OPEN · cnt=20
+ID 0x201: 00 04 D3 3A 1F 00 01 05
+  -> pack 0 · 0x04D3=1235 => 12.35V · SOC=0x3A=58% (Kalman THẬT của slave) · T=31C · n=5
+```
+`alive_counter` tăng liên tục 20→25 ⇒ BMS không treo. Cùng lúc master **HẾT in
+`[VCAN] TX tac`**.
+
+**⚠️ Bài học quan trọng: CAN cần ≥ 2 NODE.** MCP2515 gửi frame phải có node khác
+**ACK** mới coi là gửi xong. Một mình MCP2515 trên bus (chưa có xe) ⇒ `sendMsgBuf`
+FAIL ⇒ `[VCAN] TX tac -> re-init` lặp mãi. Đây **KHÔNG phải lỗi chip** — chỉ là
+chưa ai nghe. Chuỗi chẩn đoán khi bus im, theo thứ tự:
+1. `[VCAN] MCP2515 ready` có in? (không → SPI/nguồn) rồi `TX tac` có lặp? (có →
+   lỗi DÂY/BAUD, không phải SPI).
+2. **Rs (pin 8) của MCP2551 → GND** — hở là transceiver vào standby, KHÔNG thu/ACK.
+   Nghi phạm số 1.
+3. **GND CHUNG** giữa hai board. 4. CANH↔CANH / CANL↔CANL không tráo.
+5. **120 Ω × 2** ở hai đầu. 6. Thạch anh MCP2515 phải đúng 8 MHz như code khai.
+
+Cách cũ (mượn bus nội bộ + soi GPIO17 bằng LA) vẫn đúng nhưng **không cần nữa** —
+node nhận thật vừa chứng minh được vừa tạo ACK.
+
+### 📦 File BÀN GIAO cho người điều khiển motor
+
+`VCAN_RX_TEST/include/BMS_VehicleCAN.h` — **decoder header-only**, đưa cho đồng
+đội (anh ta dùng ESP32 điều khiển driver BLDC qua CAN, đồng thời nhận gói BMS).
+
+- API nhận **`(id, data, len)` THÔ**, không buộc kiểu `twai_message_t` ⇒ dùng được
+  với TWAI tích hợp HAY MCP2515/mcp_can — không ép anh ta theo stack của ta.
+- `BmsVcan_DecodeStatus(id,data,len,&st)` → `BmsStatus`; `BmsVcan_DecodePack(...)`
+  → `BmsPack`. Trả `false` nếu id/len không khớp ⇒ gọi vô tư mọi frame.
+- **Ranh giới:** ta lo **GIẢI MÃ**, anh ta lo **NHẬN CAN** (đã có sẵn cho motor).
+  File `.h` KHÔNG init CAN, KHÔNG có vòng nhận ⇒ include một mình KHÔNG chạy được.
+  `src/main.cpp` của ta là ví dụ ĐẦY ĐỦ (init + nhận + giải + in) dùng để TEST.
+- Đóng gói: giấu **protocol** (offset byte, scale ×0.01, MSB-first, sentinel
+  `0xFF`/`0x80`/`-32768`) — đổi protocol chỉ sửa 1 file, code motor không đổi.
+  KHÔNG giấu code (header-only, struct phơi field) — đánh đổi CÓ CHỦ ĐÍCH: struct
+  là DTO thuần, và "copy 1 file" quan trọng hơn với người không muốn tự code.
+- README có: checklist setup · bảng API→biến→thông số · ví dụ **FreeRTOS** (task
+  nhận+giải ghi kho có mutex, task motor đọc kho).
+
 ### Chưa làm, cố ý
 
-- **Nhận frame từ xe** — `PIN_VCAN_INT` (GPIO 22) khai chỗ nhưng **không nối,
+- **Nhận frame từ xe** — `PIN_VCAN_INT` (GPIO 4) khai chỗ nhưng **không nối,
   không dùng**. Chưa biết xe có gửi gì.
 - **Frame giới hạn dòng sạc/xả** — chưa ai đọc.
 - Bit "lệch SOC" — xe tự tính được từ `0x201`, không cần bit riêng.
@@ -739,11 +817,18 @@ chọn INA219: **nó có PGA**, INA226 thì không.
 - `BMS_Master/src/Task_Current.cpp` + `include/Task_Current.h` — CHỈ đo dòng
   (Coulomb cũ đã gỡ). INA219 qua I2C, lọc **cắt biên** 8 mẫu × 3 ms, phát hiện
   mất I2C → `currentSensorFault`. Xem mục 6d.
+- `VCAN_RX_TEST/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời + MCP2551) làm node
+  "xe" nhận `0x200`/`0x201`. `include/BMS_VehicleCAN.h` = **FILE BÀN GIAO** cho
+  người điều khiển motor (decoder header-only); `src/main.cpp` = app test;
+  `README.md` = đấu dây + API + ví dụ FreeRTOS. Đã verify chạy thật 2026-08-14.
 - `BENCH_INA219/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời) đã kiểm chứng cảm
   biến trước khi sửa master. Sinh ra mọi con số trong mục 6d. Giữ lại: nó là nơi
   duy nhất đo được thang đo và gain một cách độc lập.
-- `BMS_Master/src/Task_Logic.cpp` — bảo vệ + relay + hysteresis. `currentSensorFault`
-  → ngắt relay ngay (return sớm, cùng khuôn `webForceRelayOff`).
+- `BMS_Master/src/Task_Ingest.cpp` + `include/Task_Ingest.h` — NHẬP frame CAN
+  từ `canQueue` vào kho (event-driven, block `xQueueReceive`). Tách khỏi Task_Logic.
+- `BMS_Master/src/Task_Logic.cpp` — CHỈ bảo vệ + relay + hysteresis, quét mỗi
+  `PROTECTION_PERIOD_MS`=10ms (`vTaskDelay`). `currentSensorFault` → ngắt relay
+  ngay. Cờ web đọc qua `System_Get_RelayOverride()`.
 - `BMS_Master/src/Task_WebServer.cpp` + `include/Web_HTML.h` — dashboard;
   JSON có SOC RIÊNG từng bình, xử lý `soc = −1` thành `--`.
 - `BMS_Master/include/Config.h` — mục 6 = INA219 + shunt (**số đo thật** từ
