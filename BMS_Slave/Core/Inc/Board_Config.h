@@ -15,7 +15,7 @@
 // NHAN DIEN SLAVE (SLAVE IDENTITY)
 // ==========================================
 // The ONLY line to edit when flashing a different board.
-#define SLAVE_INDEX             0U      // 0..4, one slave per battery
+#define SLAVE_INDEX             1U      // 0..4, one slave per battery
 
 #if (SLAVE_INDEX > 4U)
     #error "SLAVE_INDEX must be 0..4"
