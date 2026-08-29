@@ -68,6 +68,8 @@ void CurrentSensor_Manager::loop() {
      *     System_Get_Snapshot() takes to read the very same field
      *
      * Each slave now runs its own Kalman filter and reports SOC in byte 4. */
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+
     while (1) {
         if (!probe()) {
             if (i2cFailRun < 0xFFFFU) { i2cFailRun++; }
@@ -116,7 +118,7 @@ void CurrentSensor_Manager::loop() {
             }
         }
 
-        vTaskDelay(pdMS_TO_TICKS(TASK_CURRENT_PERIOD_MS));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(TASK_CURRENT_PERIOD_MS));
     }
 }
 

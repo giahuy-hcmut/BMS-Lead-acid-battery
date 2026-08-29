@@ -16,8 +16,11 @@ void setup() {
     System_Data_Init();
 
     // --- CORE 1: NHIỆM VỤ SỐNG CÒN (REAL-TIME) ---
-    // Task CAN (Priority 5)
-    xTaskCreatePinnedToCore(Task_CAN_Run, "CAN", 4096, NULL, 5, NULL, 1);
+    // CAN tách đôi (Priority 5): Rx chặn trên ngắt (sự kiện), Tx chạy nhịp cố
+    // định 5 ms. Gộp chung thì hai việc đánh nhau - chặn để nhận thì không bao
+    // giờ tới lượt gửi, nên bản cũ buộc phải thăm dò 1000 lần/giây.
+    xTaskCreatePinnedToCore(Task_CAN_Rx_Run, "CANrx", 4096, NULL, 5, NULL, 1);
+    xTaskCreatePinnedToCore(Task_CAN_Tx_Run, "CANtx", 2048, NULL, 5, NULL, 1);
     
     // Task Ingest (nhập frame -> kho, event-driven) + Task Logic (bảo vệ, 10ms) - Priority 4
     xTaskCreatePinnedToCore(Task_Ingest_Run, "Ingest",  2048, NULL, 4, NULL, 1);

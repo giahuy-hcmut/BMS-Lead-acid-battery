@@ -71,12 +71,15 @@ bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
     if (!isReady) return false;
 
     twai_message_t rx_msg;
-    /* Non-blocking poll. A 10 ms blocking receive made this loop turn every
-     * ~11 ms - the slaves only send 5 frames per second, so the wait almost
-     * always ran to full timeout. A 5 ms master frame is then impossible, and
-     * it would have failed silently: the interval macro would say 5 while the
-     * bus showed 11. */
-    if (twai_receive(&rx_msg, pdMS_TO_TICKS(CAN_RX_POLL_TIMEOUT_MS)) == ESP_OK) {
+    /* CHAN vo han. Truoc day day la tham do (timeout 0) vi CUNG task nay con phai
+     * gui 0x100 moi 5 ms - chan o day thi khong bao gio toi luot gui. Viec gui da
+     * tach sang Task_CAN_Tx_Run nen gio chan duoc.
+     *
+     * Ben trong, twai_receive() la xQueueReceive tren hang doi ma ISR cua driver
+     * nap vao. Nen: khong frame -> task Blocked, 0% CPU; co frame -> ISR danh thuc,
+     * va vi task nay prio 5 (cao nhat loi 1) nen portYIELD_FROM_ISR chuyen ngu canh
+     * ngay cuoi ISR. Tre ~us thay vi <=1 ms cua vong tham do cu. */
+    if (twai_receive(&rx_msg, portMAX_DELAY) == ESP_OK) {
         
         msgOut.can_id = rx_msg.identifier;
         
@@ -115,29 +118,56 @@ bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
 }
 
 
-// --- FREE RTOS WRAPPER ---
-void Task_CAN_Run(void *pvParameters) {
-    // [ĐÃ THAY ĐỔI: Sử dụng chân cấu hình từ Macro trong Config.h]
-    CAN_Manager myCanBus(PIN_CAN_TX, PIN_CAN_RX, CAN_BAUD_RATE);
+/* MOT doi tuong, HAI task dung chung. Driver TWAI cua ESP-IDF la singleton -
+ * twai_driver_install() chi duoc goi MOT lan - nen doi tuong phai o file scope
+ * thay vi tao trong tung task.
+ *
+ * Khong can bat tay dong bo nao: Rx goi init(), con sendCurrentFrame() da co san
+ * `if (!isReady) return;` ngay dong dau, nen Tx tu im lang cho toi khi Rx init
+ * xong.
+ *
+ * Constructor chi gan 4 bien, khong dung phan cung, nen an toan khi chay truoc
+ * setup() nhu moi bien toan cuc C++ khac. */
+static CAN_Manager s_canBus(PIN_CAN_TX, PIN_CAN_RX, CAN_BAUD_RATE);
 
-    if (!myCanBus.init()) {
-        Serial.println("CAN Init Failed -> Delete Task");
+// --- RX: SU KIEN. Ngu 0% CPU khi bus im, thuc ~us sau khi co ngat. ---
+void Task_CAN_Rx_Run(void *pvParameters) {
+    if (!s_canBus.init()) {
+        Serial.println("[CAN] Init Failed -> Delete Rx Task");
         vTaskDelete(NULL);
     }
 
     BMS_Message_t tempMsg;
-    TickType_t lastFrame = xTaskGetTickCount();
 
-    while (1) {
-        if (myCanBus.readMessage(tempMsg)) {
+    for (;;) {
+        if (s_canBus.readMessage(tempMsg)) {    /* CHAN o day */
             xQueueSend(canQueue, &tempMsg, 0);
+        } else {
+            /* portMAX_DELAY khong bao gio timeout, nen false = LOI DRIVER: dang
+             * recover sau bus-off, hoac driver stopped. Khong co delay nay thi
+             * vong lap quay 100% CPU suot thoi gian bus con hong.
+             *
+             * Tx moi la ben goi twai_initiate_recovery() (loi bus-off phat hien
+             * tu phia gui), nen hai task tu phoi hop: Tx sua bus, Rx doi. */
+            vTaskDelay(pdMS_TO_TICKS(10));
         }
-        /* webSlavesActive stays: clearing it from the web UI is still the way
-         * to let the slaves fall asleep, since 0x100 doubles as heartbeat. */
-        if ((xTaskGetTickCount() - lastFrame) >= pdMS_TO_TICKS(CAN_MASTER_INTERVAL_MS)) {
-            if (System_Get_SlavesActive()) myCanBus.sendCurrentFrame(System_Get_Current());
-            lastFrame = xTaskGetTickCount();
+    }
+}
+
+// --- TX: CHU KY. 0x100 cho dong pack, kiem luon vai heartbeat cho slave. ---
+void Task_CAN_Tx_Run(void *pvParameters) {
+    /* vTaskDelayUntil, KHONG phai vTaskDelay: cai sau do chu ky tu luc cong viec
+     * KET THUC nen thoi gian thuc thi bi cong vao moi vong va nhip troi dan. Cach
+     * cu (vTaskDelay(1ms) + so tick) con lam nhip bi luong tu hoa theo tick 1 ms,
+     * thinh thoang ra 6 ms thay vi 5. Cung ly do Task_VehicleCAN dung DelayUntil. */
+    TickType_t last = xTaskGetTickCount();
+
+    for (;;) {
+        /* System_Get_SlavesActive() giu nguyen: tat no tu web van la cach cho slave
+         * ngu, vi 0x100 kiem luon vai heartbeat. */
+        if (System_Get_SlavesActive()) {
+            s_canBus.sendCurrentFrame(System_Get_Current());
         }
-        vTaskDelay(pdMS_TO_TICKS(1));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(CAN_MASTER_INTERVAL_MS));
     }
 }

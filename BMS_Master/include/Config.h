@@ -18,7 +18,6 @@
 #define CAN_MASTER_ID           0x100
 #define CAN_MASTER_INTERVAL_MS  5       // 200 Hz - nhịp Predict của Kalman bên slave
 #define CAN_TX_TIMEOUT_MS       10      // Timeout twai_transmit (ms)
-#define CAN_RX_POLL_TIMEOUT_MS  0       // twai_receive KHÔNG chặn - xem Task_CAN.cpp
 
 // Nhịp quét bảo vệ (Task_Logic). 10ms: quá dòng phát hiện <=10ms, vẫn nhường CPU.
 #define PROTECTION_PERIOD_MS    10

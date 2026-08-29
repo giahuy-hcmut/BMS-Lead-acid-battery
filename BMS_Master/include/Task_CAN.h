@@ -20,8 +20,12 @@ public:
     // Khởi động Driver
     bool init();
 
-    // Hàm đọc tin nhắn (Non-blocking)
-    // Trả về true nếu có tin, false nếu không
+    // Đọc một frame. CHẶN (portMAX_DELAY) cho tới khi có frame.
+    //
+    // Trả false KHÔNG còn nghĩa "chưa có frame" - với portMAX_DELAY thì
+    // twai_receive không bao giờ timeout. false = LỖI DRIVER (stopped, hoặc
+    // đang recover sau bus-off). Người gọi PHẢI delay, nếu không sẽ quay
+    // 100% CPU suốt thời gian bus hỏng.
     bool readMessage(BMS_Message_t &msgOut);
 
     // Gửi frame CAN_MASTER_ID chở dòng pack.
@@ -30,7 +34,13 @@ public:
     void sendCurrentFrame(float current_a);
 };
 
-// Hàm Wrapper cho FreeRTOS gọi
-void Task_CAN_Run(void *pvParameters);
+// HAI task, hai bản chất khác nhau - gộp chung chính là lý do bản cũ phải thăm dò:
+//   Rx = SỰ KIỆN, chặn trên twai_receive, ngủ 0% CPU khi bus im
+//   Tx = CHU KỲ,  vTaskDelayUntil, nhịp 0x100 không trôi
+//
+// Gộp một task thì hai việc đánh nhau: chặn để nhận ⇒ không bao giờ tới lượt gửi;
+// muốn gửi đúng nhịp ⇒ buộc phải thăm dò 1000 lần/giây, ~995 lần hỏi không.
+void Task_CAN_Rx_Run(void *pvParameters);
+void Task_CAN_Tx_Run(void *pvParameters);
 
 #endif

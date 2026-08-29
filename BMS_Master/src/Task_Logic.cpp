@@ -123,8 +123,10 @@ void Task_Logic_Run(void *pvParameters) {
     // Task này giờ CHỈ giám sát an toàn. Việc nhập frame -> kho đã tách sang
     // Task_Ingest. Quét theo nhịp CỐ ĐỊNH (không còn ăn ké timeout của queue):
     // nguồn đổi nhanh nhất ở 5ms (dòng) nên 10ms là đủ, vẫn nhường CPU.
+    TickType_t xLastWakeTime = xTaskGetTickCount();
+    
     while (1) {
         myLogic.evaluateProtection();
-        vTaskDelay(pdMS_TO_TICKS(PROTECTION_PERIOD_MS));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(PROTECTION_PERIOD_MS));
     }
 }
