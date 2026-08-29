@@ -33,6 +33,36 @@ const char index_html[] PROGMEM = R"rawliteral(
       margin: 0 auto;
     }
 
+    /* LAYOUT: 1 cot tren dien thoai, 2 cot tu 760px tro len.
+     *
+     * Mac dinh (dien thoai) khong co luat nao - .layout va .zone-* la div thuong,
+     * xep chong theo dung thu tu HTML: hero+stats -> Battery Packs -> Control.
+     * Giong het ban cu.
+     *
+     * Tu 760px: xep 2 cot. Dung grid-template-areas thay vi doi thu tu DOM, vi
+     * doi DOM de lam 2 cot se lam Control nhay len TREN Battery Packs khi xem
+     * bang dien thoai. Cach nay giu nguyen thu tu HTML nen mobile khong doi gi.
+     *
+     * Chieu cao truoc: ~815px (header 45 + status 40 + hero 90 + stats 140 +
+     * packs 340 + control 170) > viewport laptop ~650px -> phai vuot.
+     * Sau: max(A+C, B) = max(400, 340) + 85 = ~485px -> vua man. */
+    @media (min-width: 760px) {
+      body { max-width: 1000px; }
+
+      .layout {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-template-areas:
+          "a b"
+          "c b";
+        align-items: start;
+        column-gap: 16px;
+      }
+      .zone-a { grid-area: a; }
+      .zone-b { grid-area: b; }
+      .zone-c { grid-area: c; }
+    }
+
     /* HEADER */
     .header {
       display: flex;
@@ -209,6 +239,9 @@ const char index_html[] PROGMEM = R"rawliteral(
     <div id="fault-reason" style="color:#7d8590; font-size:12px; margin-top:4px;"></div>
   </div>
 
+  <div class="layout">
+
+  <div class="zone-a">
   <div class="hero">
     <div class="hero-cell">
       <div class="hero-val"><span id="totalVolt">--.-</span><span class="hero-unit">V</span></div>
@@ -238,10 +271,14 @@ const char index_html[] PROGMEM = R"rawliteral(
       <span class="stat-val" id="voltDiff">-- V</span>
     </div>
   </div>
+  </div><!-- /zone-a -->
 
+  <div class="zone-b">
   <div class="section-title">Battery Packs</div>
   <div id="packs-container"></div>
+  </div><!-- /zone-b -->
 
+  <div class="zone-c">
   <div class="section-title">Control</div>
 
   <div class="control-row">
@@ -267,6 +304,9 @@ const char index_html[] PROGMEM = R"rawliteral(
       <span class="toggle-slider"></span>
     </label>
   </div>
+  </div><!-- /zone-c -->
+
+  </div><!-- /layout -->
 
 <script>
   var CAPACITY_AH = 20.0;
