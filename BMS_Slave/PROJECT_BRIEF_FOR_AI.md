@@ -399,11 +399,15 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 ### ✅ Tách task + đóng gói cờ (master, 2026-08-13)
 
 - **`Task_Logic` tách đôi:** `Task_Ingest` (event-driven, block `xQueueReceive`
-  → `System_Update_Pack`) lo NHẬP kho; `Task_Logic` giờ CHỈ giám sát an toàn,
-  quét mỗi `PROTECTION_PERIOD_MS`=10ms bằng `vTaskDelay` (bỏ kiểu ăn ké timeout
-  queue). Producer/consumer của kho tách rời; mất slave vẫn phát hiện qua
-  timestamp trong kho, độc lập queue. Lý do KHÔNG "đọc liên tục": busy-loop đốt
-  100% CPU + không nhanh hơn tốc độ nguồn (dòng đổi 5ms).
+  → `System_Update_Pack`) lo NHẬP kho; `Task_Logic` giờ CHỈ giám sát an toàn.
+- **Tách `Task_CAN` (mới):** Chia `Task_CAN` cũ thành hai luồng độc lập: `Task_CAN_Rx` 
+  (event-driven, chặn 100% bằng `portMAX_DELAY`) và `Task_CAN_Tx` (định kỳ). 
+  Chấm dứt xung đột giữa việc chờ nhận ngắt và gửi chu kỳ đúng 5ms.
+- **Thời gian thực tuyệt đối (mới):** Các luồng định kỳ (`Task_CAN_Tx`, `Task_Logic`, 
+  `Task_Current`) đã đổi từ `vTaskDelay` sang `vTaskDelayUntil` để khóa chặt nhịp, 
+  không còn trôi dạt (jitter).
+- **Giao diện Web nâng cấp (mới):** Dashboard nâng lên thiết kế Grid 2 cột trên Desktop 
+  nhằm tối ưu không gian hiển thị, giữ nguyên 1 cột trên điện thoại.
 - **Cờ web đóng gói:** `webForceRelayOff`/`webSlavesActive` bỏ `extern`, chuyển
   `static` trong System_Data.cpp + `System_Set/Get_RelayOverride` /
   `System_Set/Get_SlavesActive` (bool atomic 32-bit → không mutex). Đúng luật
@@ -425,17 +429,15 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
   Sai dấu làm `(packI > MAX_DISCHARGE_CURRENT)` luôn sai ⇒ **bảo vệ quá dòng
   tắt hoàn toàn**. Bù lại lỗi rất ồn ào (SOC tăng khi đang chạy) nên không
   trốn được lâu — nhưng phải nằm trong checklist, không để trôi.
-- 🔴 **Nạp firmware mới cho slave 1-4** — hiện chỉ board `SLAVE_INDEX=0` (0x103)
-  chạy bản mới: đo áp thật + Kalman, node nhận CAN thấy SOC=58% đúng như mong đợi.
-  Bốn board 0x104-0x107 vẫn là **code CŨ** (áp cố định 12.60V, SOC=0) — không phải
-  lỗi, chỉ là chưa nạp. Nhớ hệ quả trong lúc đó: `System_MinSoc` = min = **0**
-  ⇒ Task_Logic ngắt relay ⇒ 0x200 báo `state=FAULT` + `RELAY_OPEN`. Bảo vệ phản
-  ứng ĐÚNG với dữ liệu nó thấy; sẽ tự hết khi 4 board kia lên bản mới.
-- 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo) — làm cùng lúc
-  với việc nạp bản mới ở trên.
-- 🟠 **9b**: under-volt bù `I·R0`. Ngưỡng 10.5V là số LÚC NGHỈ; ở 100A sụt
-  `I·R = 1.35V` nên bình đang nghỉ 11.85V sẽ đọc 10.5V dưới tải → **ngắt
-  oan ở ~17% SOC**. Sửa: so `V + I·R0`. Đã có dòng nên làm được.
+- 🔴 **Nạp firmware mới cho slave 2-4** — hiện board `SLAVE_INDEX=0` và `SLAVE_INDEX=1`
+  đã được cấu hình bản mới. Ba board còn lại vẫn là **code CŨ** (áp cố định 12.60V, SOC=0).
+  Nhớ hệ quả trong lúc đó: `System_MinSoc` = min = **0** ⇒ Task_Logic ngắt relay ⇒ 
+  0x200 báo `state=FAULT` + `RELAY_OPEN`. Bảo vệ phản ứng ĐÚNG với dữ liệu nó thấy; 
+  sẽ tự hết khi 3 board kia lên bản mới.
+- 🟠 **Calib `CALIB_K/B` cho slave 2-4** (đã calib xong cho SLAVE_INDEX=0 và 1).
+- ✅ ~~under-volt bù I·R0.~~ **(XONG Đợt 4/2026)**: Ngưỡng 10.5V đã được nâng cấp để bù 
+  điện áp rơi (IR drop) khi có dòng xả `comp = snap.current_a * KF_R0_NOM` tại 
+  `Task_Voltage.c`, giải quyết triệt để lỗi ngắt oan dưới tải.
 - 🟡 **Auto-zero cảm biến dòng lúc nghỉ** — *tụt từ 🟠 xuống 🟡.* Hall trôi
   offset 0.125A → 0.875A theo nhiệt nên auto-zero là bắt buộc; INA219 đo được
   trôi ~8mA trên 60°C, và `CURRENT_ZERO_MV` đã đo tĩnh. Vẫn nên có để bù nhiệt
@@ -461,9 +463,12 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 - 🟡 Mạng: `AutoRetransmission=DISABLE` (one-shot, mất frame khi thua
   arbitration — master ID 0x100 < slave nên master luôn thắng); không kiểm
   return `BMS_CAN_Transmit`; thứ tự `HAL_CAN_Start` trước `ConfigFilter`.
-  **Đã hoãn.** — ✅ Filter nhận MỌI ID → **ĐÃ SỬA 2026-08-13**: mask hẹp về đúng
+  **Đã hoãn.** 
+  — ✅ **Filter nhận MỌI ID → ĐÃ SỬA 2026-08-13**: mask hẹp về đúng
   `0x100` (`FilterIdHigh=0x100<<5`, `FilterMaskIdHigh=0x7FF<<5`), nên frame slave
   anh em không sinh ngắt RX đánh thức WFI → slave mới ngủ được.
+  — ✅ **AutoBusOff → ĐÃ TẮT**: Tắt cờ `AutoBusOff` trong cấu hình CAN để tránh 
+  hệ thống tự động khởi động lại bus một cách ngoài ý muốn khi có sự cố.
 - 🟡 Byte 7 frame slave còn trống — chở được `SCH_GetOverrunCount()`.
 - 🟡 GĐ8 bench: HPPC (R0/R1/C1 theo SOC), xả tham chiếu, đo variance nhiễu
   ADC thật (thay KF_R_MEAS), xác nhận OCV đầy/cạn.
