@@ -1,4 +1,5 @@
 #include "Task_VehicleCAN.h"
+#include <SPI.h>
 
 VehicleCAN_Manager::VehicleCAN_Manager(uint8_t csPin) : mcp(csPin) {
     isReady      = false;
@@ -9,6 +10,9 @@ VehicleCAN_Manager::VehicleCAN_Manager(uint8_t csPin) : mcp(csPin) {
 }
 
 bool VehicleCAN_Manager::init() {
+    // Định tuyến bộ SPI sang các chân mới
+    SPI.begin(PIN_VCAN_SCK, PIN_VCAN_MISO, PIN_VCAN_MOSI, -1);
+
     /* MCP_8MHZ phải khớp thạch anh in trên board (X1 = "8.000" trên HW-184).
      * Khai MCP_16MHZ như phần lớn ví dụ trên mạng làm bit timing sai đúng gấp
      * đôi -> baudrate còn một nửa -> bus IM LẶNG HOÀN TOÀN, không lỗi nào báo.

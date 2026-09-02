@@ -8,8 +8,8 @@
 #define CAN_BASE_ID             0x103   // ID bắt đầu của Pack 1
 
 // --- 2. CẤU HÌNH CAN BUS ---
-#define PIN_CAN_TX              GPIO_NUM_16
-#define PIN_CAN_RX              GPIO_NUM_17
+#define PIN_CAN_TX              GPIO_NUM_32
+#define PIN_CAN_RX              GPIO_NUM_35
 #define CAN_BAUD_RATE           500000
 #define CAN_QUEUE_LENGTH        20      // Chiều dài bộ đệm tin nhắn CAN
 // Frame master -> slave. Chở dòng điện pack VÀ đóng luôn vai heartbeat: slave
@@ -92,7 +92,7 @@
 #define CURRENT_FAULT_LIMIT     20      // lần I2C không ACK LIÊN TIẾP -> báo mất
 
 // --- 7. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
-#define PIN_RELAY_CONTROL       26      // Chân xuất tín hiệu điều khiển Relay tổng
+#define PIN_RELAY_CONTROL       23      // Chân xuất tín hiệu điều khiển Relay tổng
 // Lưu ý: Đa số Module Relay cách ly quang (Opto) kích ở mức THẤP (LOW). 
 // Nếu module của bạn kích mức CAO, hãy đảo ngược lại định nghĩa này.
 #define RELAY_ON                HIGH    
@@ -112,15 +112,12 @@
 // ESP32 chỉ có MỘT bộ TWAI và nó đã cõng bus nội bộ master<->slave, nên bus xe
 // bắt buộc cần controller CAN thứ hai. Module HW-184: MCP2515 + TJA1050.
 //
-// Dùng chân VSPI MẶC ĐỊNH nên KHÔNG phải gọi SPI.begin() với chân tuỳ chọn -
-// bớt một chỗ sai, và khớp mọi ví dụ của thư viện:
-//     SCK = 18 · MISO = 19 · MOSI = 23
-#define PIN_VCAN_CS             5
-#define PIN_VCAN_INT            4       // CHƯA NỐI, CHƯA DÙNG - hiện chỉ GỬI.
-                                        // Dời từ 22 về 4: GPIO 22 là chân SCL mặc
-                                        // định của I2C và INA219 dùng nó THẬT, còn
-                                        // chân này chưa nối dây. Chân đang dùng
-                                        // thắng chân dự trữ.
+// Dùng GPIO Matrix để gán lại chân SPI tối ưu mạch PCB:
+#define PIN_VCAN_SCK            27
+#define PIN_VCAN_MOSI           26
+#define PIN_VCAN_MISO           25      // MISO = Input
+#define PIN_VCAN_CS             33
+#define PIN_VCAN_INT            14      // INT = Input
 #define VCAN_STATUS_ID          0x200   // BMS -> xe: số liệu hệ thống
 #define VCAN_PACK_ID            0x201   // BMS -> xe: từng bình, ghép kênh
 #define VCAN_PERIOD_MS          100
