@@ -4,10 +4,13 @@
 BMS_Pack_State globalPacks[TOTAL_PACKS];
 SemaphoreHandle_t dataMutex;
 QueueHandle_t canQueue;
-static volatile bool s_webForceRelayOff = false;   // ghi qua System_Set_RelayOverride
+/* Khoi tao TRUE: relay LUON mo luc bat may. Nguoi van hanh phai chu dong bat
+ * tren web thi he thong moi cap dien - khong bao gio tu dong dong relay chi
+ * vi "du dieu kien". Fail-safe, va dung y do van hanh. */
+static volatile bool s_webForceRelayOff = true;    // ghi qua System_Set_RelayOverride
 static volatile bool s_webSlavesActive  = true;    // ghi qua System_Set_SlavesActive
 volatile bool systemLocked     = false;
-char faultReason[64]           = "";
+char faultReason[128]          = "";
 
 /* Khoi tao TRUE: fail-safe. Chua co bang chung cam bien dong con song thi coi nhu
  * mat; CurrentSensor_Manager::init() xoa co khi ina.begin() thanh cong. Relay cung

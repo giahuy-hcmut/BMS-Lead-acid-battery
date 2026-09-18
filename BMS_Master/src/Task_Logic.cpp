@@ -14,13 +14,29 @@ void Logic_Manager::init() {
     Serial.println("[LOGIC] Manager Initialized. Relay Configured.");
 }
 
+/* Noi them mot ly do vao chuoi, ngan cach " | ". Gom NHIEU loi thay vi chi giu
+ * loi dau tien: khi vua mat I2C vua mat CAN thi web phai thay CA HAI. */
+static void addReason(char *buf, size_t cap, const char *txt) {
+    size_t n = strlen(buf);
+    if (n > 0) {
+        strncat(buf, " | ", cap - n - 1);
+        n = strlen(buf);
+    }
+    strncat(buf, txt, cap - n - 1);
+}
+
 // Hàm cắt điện và in cảnh báo
 void Logic_Manager::lockSystem(const char* reason) {
     digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF);
-    if (!isSystemLocked) {
+
+    /* Cap nhat ly do MOI LAN goi, khong chi lan dau: danh sach loi thay doi theo
+     * thoi gian (mat them slave, het loi I2C...) va web phai thay hien trang. */
+    strncpy(faultReason, reason, sizeof(faultReason) - 1);
+    faultReason[sizeof(faultReason) - 1] = '\0';
+
+    if (!isSystemLocked) {          /* chi IN khi CHUYEN trang thai, tranh spam */
         isSystemLocked = true;
         systemLocked   = true;
-        strncpy(faultReason, reason, sizeof(faultReason) - 1);
         Serial.printf("\n[PROTECTION] RELAY TRIPPED! Reason: %s\n", reason);
     }
 }
@@ -36,76 +52,66 @@ void Logic_Manager::unlockSystem() {
     }
 }
 
-// BỘ NÃO ĐÁNH GIÁ AN TOÀN - Chạy mỗi 100ms
+// BỘ NÃO ĐÁNH GIÁ AN TOÀN - gom TAT CA loi dang hoat dong, khong chi loi dau
 void Logic_Manager::evaluateProtection() {
-    if (System_Get_RelayOverride()) {
-        lockSystem("Web Manual Override");
-        return;
-    }
-
-    /* Mat cam bien dong -> ngat ngay, khong xet gi them. So dong chinh la dau vao
-     * cua phep kiem qua dong ben duoi, nen mat no la mat bao ve. INA219 khong co
-     * chan ALE (INA226 thi co) nen day la lop bao ve DUY NHAT.
-     *
-     * Return som theo dung khuon webForceRelayOff. Khi co tat, luong chay tiep
-     * xuong phan hysteresis binh thuong nen relay van phai cho SOC >= RECOVERY_SOC
-     * moi dong lai. */
-    if (currentSensorFault) {
-        lockSystem("Current Sensor Lost (I2C)");
-        return;
-    }
-
     BMS_Pack_State snaps[TOTAL_PACKS];
     System_Get_Snapshot(snaps);
 
     /* Weakest battery limits a series pack. -1 means at least one slave is
      * offline, so the picture is incomplete - see System_MinSoc(). */
-    int sysSoc = System_MinSoc(snaps);
-
+    int  sysSoc = System_MinSoc(snaps);
     bool isSafe = true;
-    const char* errorReason = "";
+    char reasons[sizeof(faultReason)];
+    reasons[0] = '\0';
 
-    // 1. Kiểm tra Mất kết nối & Lỗi phần cứng (Từ Slave gửi lên)
+    /* Mat cam bien dong: so dong khong con tin duoc nen KHONG duoc dung no cho
+     * phep kiem qua dong ben duoi. INA219 khong co chan ALE (INA226 thi co) nen
+     * lop mem nay la bao ve DUY NHAT. */
+    bool iValid = !currentSensorFault;
+
+    if (System_Get_RelayOverride()) {
+        isSafe = false;
+        addReason(reasons, sizeof(reasons), "Operator OFF");
+    }
+    if (!iValid) {
+        isSafe = false;
+        addReason(reasons, sizeof(reasons), "Current Sensor Lost (I2C)");
+    }
+
+    /* Liet ke DICH DANH binh nao hong thay vi chi bao "co loi": voi 5 binh thi
+     * phai biet con nao moi sua duoc. KHONG `break` nua - phai gom het. */
     for (int i = 0; i < TOTAL_PACKS; i++) {
+        char tag[24];
         if (!snaps[i].isConnected) {
             isSafe = false;
-            errorReason = "CAN Timeout / Slave Lost";
-            break;
-        }
-        if (snaps[i].status != 0x00) { // 0x00 là ERROR_NONE
+            snprintf(tag, sizeof(tag), "Lost:0x%03X", CAN_BASE_ID + i);
+            addReason(reasons, sizeof(reasons), tag);
+        } else if (snaps[i].status != 0x00) {   /* 0x00 = ERROR_NONE */
             isSafe = false;
-            errorReason = "Hardware Error from Slave (OVP/UVP/OTP)";
-            break;
+            snprintf(tag, sizeof(tag), "HwErr:0x%03X", CAN_BASE_ID + i);
+            addReason(reasons, sizeof(reasons), tag);
         }
     }
 
-    // 2. Kiểm tra Quá dòng (Over-current)
-    if (isSafe && snaps[0].current > MAX_DISCHARGE_CURRENT) {
+    if (iValid && snaps[0].current > MAX_DISCHARGE_CURRENT) {
         isSafe = false;
-        errorReason = "Over Current Detected";
+        addReason(reasons, sizeof(reasons), "Over Current");
     }
 
-    // 3. Kiểm tra cạn kiệt năng lượng (Low SOC)
-    if (isSafe && sysSoc >= 0 && sysSoc < MIN_SOC_SHUTDOWN) {
+    if (sysSoc >= 0 && sysSoc < MIN_SOC_SHUTDOWN) {
         isSafe = false;
-        errorReason = "Battery Depleted (Low SOC)";
+        addReason(reasons, sizeof(reasons), "Battery Depleted (Low SOC)");
     }
 
     // --- RA QUYẾT ĐỊNH (Cơ chế Hysteresis) ---
     if (!isSafe) {
-        lockSystem(errorReason); // Ngắt lập tức nếu có bất kỳ lỗi gì
-    } 
-    else {
-        // Nếu hệ thống đang bình thường TRỞ LẠI
-        // (Chỉ cho phép mở lại Relay nếu SOC đã sạc lên mức an toàn, tránh bật tắt liên tục)
-        if (isSystemLocked) {
-            /* sysSoc == -1 keeps the relay open on purpose: do not re-energise
-             * while any battery is unmonitored. */
-            if (sysSoc >= RECOVERY_SOC) {
-                unlockSystem();
-            }
-        } else {
-            // Khởi động trơn tru: Lần đầu tiên bật máy, nếu mọi thứ OK thì đóng Relay
+        lockSystem(reasons);
+    } else {
+        /* Relay khoi dong o trang thai MO (s_webForceRelayOff = true), nen duong
+         * nay luon di qua nhanh hysteresis: sau khi nguoi van hanh bat ON tren
+         * web, relay chi dong khi SOC da du an toan.
+         * sysSoc == -1 (con binh offline) cung bi chan o day - dung y do. */
+        if (sysSoc >= RECOVERY_SOC) {
             unlockSystem();
         }
     }

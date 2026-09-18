@@ -55,7 +55,7 @@ bool System_Get_SlavesActive(void);
 
 // Protection state (set by Task_Logic, read by Task_WebServer)
 extern volatile bool systemLocked;
-extern char faultReason[64];
+extern char faultReason[128];   // 128: chua duoc NHIEU ly do noi bang " | "
 
 // Cam bien dong da mat: I2C khong ACK CURRENT_FAULT_LIMIT lan LIEN TIEP.
 // Task_Current ghi · Task_Logic + Task_VehicleCAN doc.
