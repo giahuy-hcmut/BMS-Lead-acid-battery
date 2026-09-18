@@ -30,14 +30,14 @@
 // Đo 2 mốc bằng VOM, tính:  K = (V2-V1)/(Vt2-Vt1),  B = V1 - K*Vt1.
 // Giá trị 1.0 / 0.0 = CHƯA calib (dùng để CHẠY calib), điền số đo sau.
 #if   (SLAVE_INDEX == 0U)   /* CAN 0x103 */
-    #define CALIB_K     0.98198f  // đo 2 mốc: (8.95->9.16),(11.70->11.83)
-    #define CALIB_B     0.0f
+    #define CALIB_K     0.984f  // đo 2 mốc: (8.95->9.16),(11.70->11.83)
+    #define CALIB_B     -0.0046f
 #elif (SLAVE_INDEX == 1U)   /* CAN 0x104 */
-    #define CALIB_K     1.0f    // TODO đo
-    #define CALIB_B     0.0f    // TODO đo
+    #define CALIB_K     0.9935f    // TODO đo
+    #define CALIB_B     -0.02f    // TODO đo
 #elif (SLAVE_INDEX == 2U)   /* CAN 0x105 */
-    #define CALIB_K     1.0f    // TODO đo
-    #define CALIB_B     0.0f    // TODO đo
+    #define CALIB_K     1.05428f    // TODO đo
+    #define CALIB_B     -0.742f    // TODO đo
 #elif (SLAVE_INDEX == 3U)   /* CAN 0x106 */
     #define CALIB_K     1.0f    // TODO đo
     #define CALIB_B     0.0f    // TODO đo
