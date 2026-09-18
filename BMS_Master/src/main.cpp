@@ -29,7 +29,11 @@ void setup() {
 
     // Task CAN xe qua MCP2515 (Priority 3). Dưới Logic vì bảo vệ phải thắng;
     // trên WebSrv vì đây là đường điều khiển xe, không phải hiển thị.
+    /* Tat khi do sai so: task nay in "[VCAN] TX tac" ~4 dong/giay neu
+     * chua noi node xe, lam ban file CSV. Do dien ap khong can bus xe. */
+    #ifndef CSV_LOG
     xTaskCreatePinnedToCore(Task_VehicleCAN_Run, "VCAN", 4096, NULL, 3, NULL, 1);
+    #endif
     // --- CORE 0: NHIỆM VỤ HIỂN THỊ (GIAO TIẾP NGƯỜI DÙNG) ---
     // Task Terminal (Priority 1 - Thấp nhất)
     // Chạy ở Core 0 để không làm phiền Core 1 tính toán

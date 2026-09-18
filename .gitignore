@@ -8,3 +8,6 @@ Debug/
 
 # Archives
 *.zip
+
+# Serial monitor capture (du lieu do, khong phai ma nguon)
+logs/

@@ -37,9 +37,15 @@
 
 // --- 5. CẤU HÌNH WEB SERVER (WIFI AP) ---
 #define WIFI_AP_SSID            "MURATA_EV_BMS" // Tên WiFi phát ra
-#define WIFI_AP_PASS            "12345678"      // Mật khẩu WiFi (ít nhất 8 ký tự)
+#define WIFI_AP_PASS            "12345677"      // Mật khẩu WiFi (ít nhất 8 ký tự)
 #define WIFI_AP_CHANNEL         1               // BẮT BUỘC LÀ 1 ĐỂ KHÔNG CHẾT ESP-NOW
 #define WEB_UPDATE_INTERVAL     500             // Tốc độ làm mới Web (ms)
+
+// --- CHE DO DO SAI SO (chi bat khi lay so lieu calib) ---
+// Bo comment: Task_Terminal xuat CSV thay vi bang dashboard, VA tat
+// Task_VehicleCAN (no in "[VCAN] TX tac" ~4 dong/giay khi chua noi node xe,
+// lam ban file CSV). Comment lai sau khi do xong.
+//#define CSV_LOG
 
 // --- 6. CẢM BIẾN DÒNG: INA219 + SHUNT NGOÀI ---
 // SOC KHÔNG còn tính ở master: mỗi slave chạy Kalman rồi gửi về ở byte 4 của

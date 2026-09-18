@@ -10,9 +10,12 @@ Terminal_Dashboard::Terminal_Dashboard() {
 }
 
 void Terminal_Dashboard::init() {
+#ifndef CSV_LOG
     Serial.println("\n\n");
     Serial.println(">>> BMS MASTER CONSOLE V3.0 <<<");
     Serial.println(">>> TEST MODE: 2 PACKS LITHIUM <<<");
+#endif
+    /* Giu do tre nay ca o che do CSV: cho slave kip gui frame dau tien. */
     vTaskDelay(pdMS_TO_TICKS(1000));
 }
 
@@ -69,11 +72,34 @@ void Terminal_Dashboard::run() {
     init();
     while (1) {
         fetchData();
+#ifdef CSV_LOG
+        /* Che do lay so lieu do sai so. Dau phay de Excel tach cot, dem khoang
+         * trang de doc thang hang ngay tren terminal.
+         *
+         * Ten cot sinh tu CAN_BASE_ID nen khong the lech voi thuc te: v_103 la
+         * binh cua SLAVE_INDEX 0, v_104 la SLAVE_INDEX 1, ...
+         *
+         * Chu ky giu nguyen 1000 ms: slave chi gui frame moi 1000 ms nen in
+         * nhanh hon chi sinh ra cac dong trung lap, khong them thong tin. */
+        static bool s_hdr = false;
+        if (!s_hdr) {
+            Serial.print("  millis");
+            for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", v_%03X", CAN_BASE_ID + i); }
+            for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", s_%03X", CAN_BASE_ID + i); }
+            Serial.println();
+            s_hdr = true;
+        }
+        Serial.printf("%8lu", millis());
+        for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", %6.2f", localPacks[i].voltage); }
+        for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", %5d",   localPacks[i].soc);     }
+        Serial.println();
+#else
         printHeader(millis() / 1000);
         for(int i=0; i<TOTAL_PACKS; i++) {
             printRow(i, localPacks[i]);
         }
         printFooter();
+#endif
         // Cập nhật màn hình mỗi 1 giây
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
