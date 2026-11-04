@@ -33,12 +33,16 @@ battery's voltage and temperature, runs a Kalman filter to estimate that battery
 state of charge, and reports over CAN. A central controller collects all five, measures
 pack current through a shunt, and opens the contactor when any safety condition fails.
 
-![](docs/images/32-full-assembly.jpg)
+<p align="center">
+  <img src="docs/images/32-full-assembly.jpg" width="72%">
+</p>
 
 _Figure 1: Complete battery management system — contactor unit (top left), central
 controller (top right), five battery monitors (bottom)_
 
-![](docs/images/01-system-schematic.jpg)
+<p align="center">
+  <img src="docs/images/01-system-schematic.jpg" width="85%">
+</p>
 
 _Figure 2: System block diagram — five battery monitors on the internal CAN bus, one
 central controller, contactor and shunt on the power path_
@@ -104,7 +108,9 @@ split the same way — the floating side runs off the battery it measures, the b
 takes +5 V from the central controller. Voltage divider and temperature sensor stay
 entirely inside the floating domain, so no conductive path crosses the barrier.
 
-![](docs/images/02-system-wiring.jpg)
+<p align="center">
+  <img src="docs/images/02-system-wiring.jpg" width="85%">
+</p>
 
 _Figure 3: System wiring — the isolation boundary runs through each monitor S_1…S_5.
 Below it, the floating domain tied to one battery; above it, the shared-ground domain
@@ -129,27 +135,31 @@ III. Hardware design
 The divider ratio puts the 15.00 V over-voltage threshold at 3.24 V on a 3.3 V ADC —
 inside range, with the full scale only 0.27 V above the trip point.
 
-![](docs/images/03-monitor-block.jpg)
+<p align="center">
+  <img src="docs/images/03-monitor-block.jpg" width="32%">
+</p>
 
 _Figure 4: Battery monitor block diagram — the isolator sits between MCU and CAN
 transceiver, so each board's ground stays independent of the bus_
 
-![](docs/images/04-monitor-wiring.jpg)
+<p align="center">
+  <img src="docs/images/04-monitor-wiring.jpg" width="100%">
+</p>
 
 _Figure 5: Battery monitor wiring. PB1 reads the divider, PB7 the DS18B20, PB8/PB9
 cross the isolator to the transceiver_
 
-![](docs/images/05-monitor-schematic.jpg)
+<p align="center">
+  <img src="docs/images/05-monitor-schematic.jpg" width="85%">
+</p>
 
 _Figure 6: Battery monitor schematic — MCU, digital isolator, voltage sense,
 temperature sense, CAN transceiver, power_
 
-<table>
-<tr>
-<td width="50%"><img src="docs/images/06-monitor-pcb.jpg" width="100%"></td>
-<td width="50%"><img src="docs/images/07-monitor-assembled.jpg" width="100%"></td>
-</tr>
-</table>
+<p align="center">
+  <img src="docs/images/06-monitor-pcb.jpg" width="46%">
+  <img src="docs/images/07-monitor-assembled.jpg" width="24%">
+</p>
 
 _Figure 7–8: Battery monitor PCB layout (67.5 × 50.2 mm) and the assembled board_
 
@@ -166,26 +176,30 @@ _Figure 7–8: Battery monitor PCB layout (67.5 × 50.2 mm) and the assembled bo
 The ESP32 has exactly one TWAI peripheral and the internal bus already uses it, so the
 vehicle bus needs a second controller — hence the MCP2515 over SPI.
 
-![](docs/images/08-controller-block.jpg)
+<p align="center">
+  <img src="docs/images/08-controller-block.jpg" width="85%">
+</p>
 
 _Figure 9: Central controller block diagram_
 
-![](docs/images/09-controller-wiring.jpg)
+<p align="center">
+  <img src="docs/images/09-controller-wiring.jpg" width="85%">
+</p>
 
 _Figure 10: Central controller wiring — MCP2551 on IO35/IO32, INA219 on I²C IO21/IO22,
 MCP2515 on SPI IO25/26/27/33 with interrupt on IO14, relay drive on IO23_
 
-![](docs/images/10-controller-schematic.jpg)
+<p align="center">
+  <img src="docs/images/10-controller-schematic.jpg" width="45%">
+</p>
 
 _Figure 11: Central controller schematic — ESP32, CAN transceiver, current sensor,
 relay module, SPI–CAN, power_
 
-<table>
-<tr>
-<td width="50%"><img src="docs/images/11-controller-pcb.jpg" width="100%"></td>
-<td width="50%"><img src="docs/images/12-controller-assembled.jpg" width="100%"></td>
-</tr>
-</table>
+<p align="center">
+  <img src="docs/images/11-controller-pcb.jpg" width="28%">
+  <img src="docs/images/12-controller-assembled.jpg" width="42%">
+</p>
 
 _Figure 12–13: Central controller PCB layout (72 × 96 mm) and the assembled board_
 
@@ -208,18 +222,24 @@ IV. Software design
 Two electrically separate CAN networks, both 500 kbit/s. Every signal is
 `raw × gain + offset`, MSB first.
 
-![](docs/images/13-can-topology.jpg)
+<p align="center">
+  <img src="docs/images/13-can-topology.jpg" width="85%">
+</p>
 
 _Figure 14: CAN topology — internal multi-drop bus with 120 Ω at both ends; vehicle bus
 transmit-only through the MCP2515_
 
-![](docs/images/14-can-frames-internal.jpg)
+<p align="center">
+  <img src="docs/images/14-can-frames-internal.jpg" width="100%">
+</p>
 
 _Figure 15: Internal bus frames. `0x100` carries pack current downward every 5 ms;
 `0x103`–`0x107` carry each battery's voltage, current, SOC, temperature and fault flags
 upward every 1000 ms_
 
-![](docs/images/15-can-frames-vehicle.jpg)
+<p align="center">
+  <img src="docs/images/15-can-frames-vehicle.jpg" width="100%">
+</p>
 
 _Figure 16: Vehicle bus frames. `0x200` carries pack-level state, `0x201` carries
 per-battery detail multiplexed one battery per frame — all five scanned in 500 ms_
@@ -231,17 +251,23 @@ transmits at 300 ms, then 400 / 500 / 600 / 700). Their frames therefore never c
 with each other. When a monitor's frame does coincide with `0x100`, it loses
 arbitration — the master's ID is lower — waits, and transmits immediately after.
 
-![](docs/images/16-can-timing.jpg)
+<p align="center">
+  <img src="docs/images/16-can-timing.jpg" width="100%">
+</p>
 
 _Figure 17: Timing of both CAN networks. Green = won arbitration, red = lost and
 waiting, grey = not yet due_
 
-![](docs/images/17-monitor-task-timing.jpg)
+<p align="center">
+  <img src="docs/images/17-monitor-task-timing.jpg" width="85%">
+</p>
 
 _Figure 18: Battery monitor task timing — temperature 1000 ms, voltage 50 ms, SOC 5 ms,
 CAN receive interrupt 5 ms_
 
-![](docs/images/19-controller-task-timing.jpg)
+<p align="center">
+  <img src="docs/images/19-controller-task-timing.jpg" width="90%">
+</p>
 
 _Figure 19: Central controller task timing. Core 1 runs the real-time work (CAN TX/RX
 priority 5, ingest and current priority 4, vehicle CAN priority 3); core 0 runs the web
@@ -252,20 +278,26 @@ server at priority 2_
 Both microcontrollers use the same shape: producers write into one store, consumers
 read a consistent snapshot of it.
 
-![](docs/images/18-monitor-dataflow.jpg)
+<p align="center">
+  <img src="docs/images/18-monitor-dataflow.jpg" width="100%">
+</p>
 
 _Figure 20: Battery monitor data flow. Voltage and temperature tasks and the CAN
 interrupt write into the store; the SOC task reads it, runs the filter, writes SOC back;
 the CAN task sends a snapshot_
 
-![](docs/images/20-controller-dataflow.jpg)
+<p align="center">
+  <img src="docs/images/20-controller-dataflow.jpg" width="100%">
+</p>
 
 _Figure 21: Central controller data flow. Every access to the shared store takes
 `dataMutex`, and inter-task hand-off goes through `canQueue`_
 
 ### 4.4 Protection
 
-![](docs/images/21-protection-flowchart.jpg)
+<p align="center">
+  <img src="docs/images/21-protection-flowchart.jpg" width="26%">
+</p>
 
 _Figure 22: Protection task, 10 ms period. Any one unsafe condition opens the relay, and
 **all** active reasons are recorded so the web UI can show the complete fault list rather
@@ -315,24 +347,32 @@ and PCAN-View.
 
 ### 5.1 Sensor accuracy
 
-![](docs/images/22-test-voltage.jpg)
+<p align="center">
+  <img src="docs/images/22-test-voltage.jpg" width="45%">
+</p>
 
 _Figure 23: Voltage cross-check. The monitor reports 11.93 V, a VN304 multimeter reads
 11.95 V on the same terminals — 0.02 V apart_
 
-![](docs/images/23-test-temperature.jpg)
+<p align="center">
+  <img src="docs/images/23-test-temperature.jpg" width="45%">
+</p>
 
 _Figure 24: Temperature cross-check against melting ice (0.0 °C by definition). The web
 UI shows 1 °C — one display step_
 
-![](docs/images/27-test-current.jpg)
+<p align="center">
+  <img src="docs/images/27-test-current.jpg" width="45%">
+</p>
 
 _Figure 25: Current cross-check on a resistive load. Web shows 0.92 A, clamp meter reads
 0.90 A — 2.2 % of reading_
 
 ### 5.2 Trip latency
 
-![](docs/images/28-test-trip-latency.jpg)
+<p align="center">
+  <img src="docs/images/28-test-trip-latency.jpg" width="90%">
+</p>
 
 _Figure 26: Fault-injection input pulled low, contactor command measured on a second
 channel: **8.53 ms**, against a 20 ms requirement. The third channel marks every
@@ -347,21 +387,29 @@ excludes CAN transport, the 3 s node timeout and the contactor's mechanical trav
 Every periodic task raises a GPIO while it runs, so period and jitter are read directly
 off the waveform.
 
-![](docs/images/24-test-monitor-timing.jpg)
+<p align="center">
+  <img src="docs/images/24-test-monitor-timing.jpg" width="90%">
+</p>
 
 _Figure 27: Battery monitor task periods — 5.003 / 49.998 / 1000.025 / 1000.025 ms,
 within 0.5 % of design_
 
-![](docs/images/29-test-controller-timing.jpg)
+<p align="center">
+  <img src="docs/images/29-test-controller-timing.jpg" width="100%">
+</p>
 
 _Figure 28: Central controller task periods — 2.95 / 10.00 / 500.04 ms, within 2 %_
 
-![](docs/images/25-test-pcan-internal.jpg)
+<p align="center">
+  <img src="docs/images/25-test-pcan-internal.jpg" width="100%">
+</p>
 
 _Figure 29: Internal bus captured with PCAN-View. `0x100` at 5.0 ms; `0x103`–`0x107` at
 1000.1 ms_
 
-![](docs/images/26-test-pcan-vehicle.jpg)
+<p align="center">
+  <img src="docs/images/26-test-pcan-vehicle.jpg" width="100%">
+</p>
 
 _Figure 30: Vehicle bus captured with PCAN-View. `0x200` and `0x201`, 8 bytes each, at
 100.3 ms_
@@ -372,12 +420,10 @@ The controller runs a Wi-Fi access point and serves the UI itself — HTTP for t
 Server-Sent Events for a one-way 500 ms data push, HTTP POST for operator commands. No
 external network needed.
 
-<table>
-<tr>
-<td width="50%"><img src="docs/images/31-web-dashboard.jpg" width="100%"></td>
-<td width="50%"><img src="docs/images/30-web-fault.jpg" width="100%"></td>
-</tr>
-</table>
+<p align="center">
+  <img src="docs/images/31-web-dashboard.jpg" width="19%">
+  <img src="docs/images/30-web-fault.jpg" width="36%">
+</p>
 
 _Figure 31–32: Normal operation (five batteries online, 60.98 V total, system SOC equal
 to the weakest battery) and a fault condition (one battery under-voltage, one lost; all
