@@ -129,7 +129,7 @@ void Task_SOC_Run(void)
      * real design bug once - see section 2 of the project brief. */
     if (BMS_Data_TakeVoltageFresh() != 0U)
     {
-        SOC_Kalman_Update(&s_kf, snap.voltage_v, snap.current_a, snap.temp_c);
+        (void)SOC_Kalman_Update(&s_kf, snap.voltage_v, snap.current_a, snap.temp_c);
     }
 
     /* Always through GetSOC(): the internal state is allowed to overshoot
