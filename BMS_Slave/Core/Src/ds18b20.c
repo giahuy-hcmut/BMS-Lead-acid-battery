@@ -105,9 +105,9 @@ void DS18B20_Start_Conversion(void)
  */
 float DS18B20_Read_Temperature(void)
 {
-    uint8_t  temp_lsb;
-    uint8_t  temp_msb;
-    uint16_t raw;
+    uint8_t temp_lsb;
+    uint8_t temp_msb;
+    int16_t raw;
 
     if (DS18B20_Reset() == DS18B20_PRESENCE_FAIL)
     {
@@ -122,7 +122,17 @@ float DS18B20_Read_Temperature(void)
     temp_lsb = DS18B20_ReadByte();
     temp_msb = DS18B20_ReadByte();
 
-    raw = (uint16_t)(((uint16_t)temp_msb << 8) | (uint16_t)temp_lsb);
+    /* The scratchpad temperature is a SIGNED 16-bit two's complement count.
+     * Reading it as unsigned turned every sub-zero reading into a huge
+     * positive one: -10 C arrives as 0xFF60, which is -160 counts, but as a
+     * uint16_t it is 65376 and divides out to +4086 C. That is above
+     * THRESHOLD_OVER_TEMP, so a cold battery used to raise a false
+     * over-temperature fault and open the contactor.
+     *
+     * Converting a uint16_t above 32767 to int16_t is implementation-defined
+     * in C99; GCC defines it as the two's complement value, which is the
+     * toolchain this firmware is built with. */
+    raw = (int16_t)(((uint16_t)temp_msb << 8) | (uint16_t)temp_lsb);
 
     return (float)raw / DS18B20_COUNTS_PER_DEGREE;
 }
