@@ -34,10 +34,12 @@ constexpr int kSocSentinelHigh = 101;
  *  STATIC VARIABLES
  **********************/
 
-/* Shared objects, declared extern in the header. */
-BmsPackState      globalPacks[kTotalPacks];
-SemaphoreHandle_t dataMutex;
-QueueHandle_t     canQueue;
+/* The store and its mutex are private to this file. */
+static BmsPackState      s_globalPacks[kTotalPacks];
+static SemaphoreHandle_t s_dataMutex;
+
+/* Shared with Task_CAN and Task_Ingest, declared extern in the header. */
+QueueHandle_t canQueue;
 
 volatile bool systemLocked               = false;
 char          faultReason[kFaultReasonLen] = "";
@@ -69,20 +71,20 @@ static volatile bool s_webSlavesActive  = true;
  */
 void System_Data_Init()
 {
-    dataMutex = xSemaphoreCreateMutex();
+    s_dataMutex = xSemaphoreCreateMutex();
     canQueue  = xQueueCreate(kCanQueueLength, sizeof(BmsMessage));
 
     /* The WHOLE array, not just the monitored count: entries beyond the
      * count must not hold indeterminate values either. */
     for (uint8_t i = 0U; i < kTotalPacks; i++)
     {
-        globalPacks[i].voltage     = 0.0f;
-        globalPacks[i].current     = 0.0f;
-        globalPacks[i].soc         = 0;
-        globalPacks[i].temperature = 0;
-        globalPacks[i].status      = 0U;
-        globalPacks[i].lastUpdate  = 0U;
-        globalPacks[i].isConnected = false;
+        s_globalPacks[i].voltage     = 0.0f;
+        s_globalPacks[i].current     = 0.0f;
+        s_globalPacks[i].soc         = 0;
+        s_globalPacks[i].temperature = 0;
+        s_globalPacks[i].status      = 0U;
+        s_globalPacks[i].lastUpdate  = 0U;
+        s_globalPacks[i].isConnected = false;
     }
 }
 
@@ -108,14 +110,14 @@ void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp,
         return;
     }
 
-    if (xSemaphoreTake(dataMutex, kStoreMutexWait) == pdTRUE)
+    if (xSemaphoreTake(s_dataMutex, kStoreMutexWait) == pdTRUE)
     {
-        globalPacks[idx].voltage     = voltage;
-        globalPacks[idx].temperature = temp;
-        globalPacks[idx].status      = status;
-        globalPacks[idx].soc         = soc;
-        globalPacks[idx].lastUpdate  = millis();
-        xSemaphoreGive(dataMutex);
+        s_globalPacks[idx].voltage     = voltage;
+        s_globalPacks[idx].temperature = temp;
+        s_globalPacks[idx].status      = status;
+        s_globalPacks[idx].soc         = soc;
+        s_globalPacks[idx].lastUpdate  = millis();
+        xSemaphoreGive(s_dataMutex);
     }
 }
 
@@ -126,13 +128,13 @@ void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp,
  */
 void System_Update_Current(float current)
 {
-    if (xSemaphoreTake(dataMutex, kStoreMutexWait) == pdTRUE)
+    if (xSemaphoreTake(s_dataMutex, kStoreMutexWait) == pdTRUE)
     {
         for (uint8_t i = 0U; i < kTotalPacks; i++)
         {
-            globalPacks[i].current = current;
+            s_globalPacks[i].current = current;
         }
-        xSemaphoreGive(dataMutex);
+        xSemaphoreGive(s_dataMutex);
     }
 }
 
@@ -143,7 +145,7 @@ void System_Update_Current(float current)
  */
 void System_Get_Snapshot(BmsPackState *snapshotArray)
 {
-    if (xSemaphoreTake(dataMutex, kStoreMutexWait) == pdTRUE)
+    if (xSemaphoreTake(s_dataMutex, kStoreMutexWait) == pdTRUE)
     {
         /* The WHOLE array: the caller sized its buffer at kTotalPacks and
          * must not be left reading uninitialised entries past the count. */
@@ -151,13 +153,13 @@ void System_Get_Snapshot(BmsPackState *snapshotArray)
         {
             /* Online state is derived here, at the one place that owns
              * lastUpdate, so no caller has to recompute it. */
-            bool isOnline = (globalPacks[i].lastUpdate > 0U) &&
-                            ((millis() - globalPacks[i].lastUpdate) < kSlaveTimeoutMs);
+            bool isOnline = (s_globalPacks[i].lastUpdate > 0U) &&
+                            ((millis() - s_globalPacks[i].lastUpdate) < kSlaveTimeoutMs);
 
-            globalPacks[i].isConnected = isOnline;
-            snapshotArray[i]           = globalPacks[i];
+            s_globalPacks[i].isConnected = isOnline;
+            snapshotArray[i]           = s_globalPacks[i];
         }
-        xSemaphoreGive(dataMutex);
+        xSemaphoreGive(s_dataMutex);
     }
 }
 
@@ -172,12 +174,12 @@ float System_Get_Current(void)
     /* Timeout 0: this sits on the 5 ms frame path and must never block.
      * On contention keep the last known value rather than returning 0.0, so
      * a busy mutex cannot inject a spurious "0 A" into every slave's filter.
-     * globalPacks[0] because System_Update_Current() writes the same value
+     * s_globalPacks[0] because System_Update_Current() writes the same value
      * to all packs - the same current flows through batteries in series. */
-    if (xSemaphoreTake(dataMutex, 0) == pdTRUE)
+    if (xSemaphoreTake(s_dataMutex, 0) == pdTRUE)
     {
-        s_cached = globalPacks[0].current;
-        xSemaphoreGive(dataMutex);
+        s_cached = s_globalPacks[0].current;
+        xSemaphoreGive(s_dataMutex);
     }
 
     return s_cached;

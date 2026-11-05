@@ -91,12 +91,13 @@ struct __attribute__((packed)) BmsTelemetryPacket
  **********************/
 
 /* --- Shared objects ---
- * Still raw externs rather than accessors. The web control flags below show
- * the pattern they should follow; converting these three means touching the
- * five tasks that use them, which is a change of its own. */
-extern BmsPackState      globalPacks[kTotalPacks];
-extern SemaphoreHandle_t dataMutex;
-extern QueueHandle_t     canQueue;
+ * The store itself and its mutex are private to System_Data.cpp; nothing
+ * outside ever referred to them, so nothing outside can now.
+ *
+ * canQueue stays visible because Task_CAN posts to it and Task_Ingest reads
+ * from it. Hiding it would mean wrapping xQueueSend and xQueueReceive in a
+ * pair of functions that add nothing but a layer. */
+extern QueueHandle_t canQueue;
 
 /** Protection state. Set by Task_Logic, read by Task_WebServer and
  * Task_VehicleCAN. One writer, several readers, so volatile and no mutex. */

@@ -72,9 +72,18 @@ bool WebServerManager::init()
     WiFi.mode(WIFI_AP_STA);
 
     /* The channel MUST match the one ESP-NOW uses, or ESP-NOW stops
-     * working: both share the single radio. */
-    WiFi.softAP(kWifiApSsid, kWifiApPass, kWifiApChannel, kApHidden,
-                kApMaxClients);
+     * working: both share the single radio.
+     *
+     * The return value is checked. It used to be discarded, and this
+     * function then returned true unconditionally, which made the caller's
+     * `if (!init())` branch unreachable - a failure handler that could never
+     * run. */
+    if (!WiFi.softAP(kWifiApSsid, kWifiApPass, kWifiApChannel, kApHidden,
+                     kApMaxClients))
+    {
+        Serial.println("[WEB] softAP failed - no access point");
+        return false;
+    }
 
     Serial.print("[WEB] Access point started, IP: ");
     Serial.println(WiFi.softAPIP());

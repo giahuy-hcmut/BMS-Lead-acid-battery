@@ -60,9 +60,14 @@ TerminalDashboard::TerminalDashboard()
 void TerminalDashboard::init()
 {
 #ifndef CSV_LOG
-    Serial.println("\n\n");
-    Serial.println(">>> BMS MASTER CONSOLE V3.0 <<<");
-    Serial.println(">>> TEST MODE: 2 PACKS LITHIUM <<<");
+    /* Derived from the configuration rather than written out, so the banner
+     * cannot go stale the way its predecessor did: it announced two lithium
+     * packs long after the system had become five lead-acid ones. */
+    Serial.println("\n\n>>> BMS MASTER CONSOLE <<<");
+    Serial.printf(">>> %u lead-acid packs, CAN 0x%03X..0x%03X <<<\n\n",
+                  (unsigned)System_GetPackCount(),
+                  (unsigned)kCanBaseId,
+                  (unsigned)(kCanBaseId + System_GetPackCount() - 1U));
 #endif
 
     vTaskDelay(kStartupDelay);
@@ -179,16 +184,22 @@ void TerminalDashboard::printHeader(uint32_t uptime)
     Serial.printf(" SYSTEM VOLTAGE: %6.2f V  |  CURRENT: %6.2f A\n",
                   totalVolt, localPacks_[0].current);
 
+    /* The field beside the SOC used to read "MODE : TEST (2S)", which was
+     * both wrong and useless. The relay state is what an operator actually
+     * needs next to the SOC. */
+    const char *relayState = systemLocked ? "OPEN" : "CLOSED";
+
     if (sysSOC < 0)
     {
         /* A slave is offline, so there is no way to tell whether the
          * missing battery is the weakest one. */
-        Serial.printf(" SYSTEM SOC    :  --  %%       |  MODE   : TEST (2S)\n");
+        Serial.printf(" SYSTEM SOC    :  --  %%       |  RELAY  : %s\n",
+                      relayState);
     }
     else
     {
-        Serial.printf(" SYSTEM SOC    : %3d %%       |  MODE   : TEST (2S)\n",
-                      sysSOC);
+        Serial.printf(" SYSTEM SOC    : %3d %%       |  RELAY  : %s\n",
+                      sysSOC, relayState);
     }
 
     Serial.println("----------------------------------------------------------");
