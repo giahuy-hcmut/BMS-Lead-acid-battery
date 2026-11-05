@@ -1,8 +1,39 @@
-#ifndef WEB_HTML_H
-#define WEB_HTML_H
+/**
+ * @file      Web_HTML.h
+ * @author    Do Dang Gia Huy
+ * @brief     The dashboard page, served from flash as one string literal.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
+ *
+ * PROGMEM keeps the page in flash instead of copying it into RAM at start-up.
+ *
+ * The markup, styling and script inside the raw literal are NOT reformatted
+ * by the C++ style rules, and the Vietnamese text in them is deliberate: the
+ * people reading this page are the vehicle operators.
+ */
+
+#ifndef WEB_HTML_H_
+#define WEB_HTML_H_
+
+/**********************
+ *      INCLUDES
+ *********************/
 
 #include <Arduino.h>
 
+/**********************
+ *      DEFINES
+ *********************/
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ * GLOBAL PROTOTYPES
+ **********************/
+
+/** The complete dashboard page. */
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML>
 <html>
@@ -427,4 +458,8 @@ const char index_html[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
-#endif
+/**********************
+ *      MACROS
+ **********************/
+
+#endif /*WEB_HTML_H_*/

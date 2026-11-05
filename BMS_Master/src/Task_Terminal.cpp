@@ -1,111 +1,230 @@
+/**
+ * @file      Task_Terminal.cpp
+ * @author    Do Dang Gia Huy
+ * @brief     Console rendering and the CSV logging path.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
+ */
+
+/**********************
+ *      INCLUDES
+ **********************/
+
 #include "Task_Terminal.h"
 
-Terminal_Dashboard::Terminal_Dashboard() {
-    for(int i=0; i<kTotalPacks; i++) {
-        localPacks[i].voltage = 0.0f;
-        localPacks[i].isConnected = false;
-        localPacks[i].current = 0.0f;
-        localPacks[i].soc = 0;
-    }
+/**********************
+ *      DEFINES
+ **********************/
+
+/** Refresh period of the console and of one CSV row. The slaves only send a
+ * frame every 1000 ms, so printing faster adds duplicate rows and no
+ * information. */
+constexpr TickType_t kRefreshPeriod = pdMS_TO_TICKS(1000);
+
+/** Let the slaves boot and send their first frames before printing. Kept in
+ * CSV mode too, for the same reason. */
+constexpr TickType_t kStartupDelay = pdMS_TO_TICKS(1000);
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/**********************
+ *      MACROS
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Clear the local cache; touches no hardware.
+ */
+TerminalDashboard::TerminalDashboard()
+    : localPacks_{}
+{
 }
 
-void Terminal_Dashboard::init() {
+/**
+ * @brief  Print the banner and wait for the slaves to come up.
+ * @return None.
+ */
+void TerminalDashboard::init()
+{
 #ifndef CSV_LOG
     Serial.println("\n\n");
     Serial.println(">>> BMS MASTER CONSOLE V3.0 <<<");
     Serial.println(">>> TEST MODE: 2 PACKS LITHIUM <<<");
 #endif
-    /* Giu do tre nay ca o che do CSV: cho slave kip gui frame dau tien. */
-    vTaskDelay(pdMS_TO_TICKS(1000));
+
+    vTaskDelay(kStartupDelay);
 }
 
-void Terminal_Dashboard::fetchData() {
-    // [CHUẨN CÔNG NGHIỆP] Lấy bản chụp an toàn từ kho dữ liệu hệ thống
-    // isConnected da duoc System_Get_Snapshot() tinh san (System_Data.cpp), nen
-    // vong lap tinh lai o day la trung lap thuan - da bo.
-    System_Get_Snapshot(localPacks);
+/**
+ * @brief  Refresh the console once a second, forever.
+ * @return None.
+ */
+void TerminalDashboard::run()
+{
+    init();
+
+    while (1)
+    {
+        fetchData();
+
+#ifdef CSV_LOG
+        /* Error-measurement mode. Commas so a spreadsheet splits the
+         * columns, padding so the rows still line up when read straight off
+         * the terminal.
+         *
+         * The column names are derived from kCanBaseId, so they cannot
+         * disagree with reality: v_103 is the battery of SLAVE_INDEX 0,
+         * v_104 is SLAVE_INDEX 1, and so on. */
+        static bool s_hdr = false;
+
+        if (!s_hdr)
+        {
+            Serial.print("  millis");
+            for (uint8_t i = 0U; i < kTotalPacks; i++)
+            {
+                Serial.printf(", v_%03X", (unsigned)(kCanBaseId + i));
+            }
+            for (uint8_t i = 0U; i < kTotalPacks; i++)
+            {
+                Serial.printf(", s_%03X", (unsigned)(kCanBaseId + i));
+            }
+            Serial.println();
+            s_hdr = true;
+        }
+
+        Serial.printf("%8lu", millis());
+        for (uint8_t i = 0U; i < kTotalPacks; i++)
+        {
+            Serial.printf(", %6.2f", localPacks_[i].voltage);
+        }
+        for (uint8_t i = 0U; i < kTotalPacks; i++)
+        {
+            Serial.printf(", %5d", localPacks_[i].soc);
+        }
+        Serial.println();
+#else
+        printHeader(millis() / 1000U);
+
+        for (uint8_t i = 0U; i < kTotalPacks; i++)
+        {
+            printRow(i, localPacks_[i]);
+        }
+
+        printFooter();
+#endif
+
+        vTaskDelay(kRefreshPeriod);
+    }
 }
 
-void Terminal_Dashboard::printHeader(uint32_t uptime) {
-    float totalVolt = System_TotalVoltage(localPacks);
+/**
+ * @brief  FreeRTOS entry point for the serial dashboard.
+ * @param[in] pvParameters  Unused.
+ * @return None.
+ */
+void Task_Terminal_Run(void *pvParameters)
+{
+    TerminalDashboard dashboard;
+
+    (void)pvParameters;
+
+    dashboard.run();
+}
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Take a consistent copy of the store.
+ * @return None.
+ */
+void TerminalDashboard::fetchData()
+{
+    System_Get_Snapshot(localPacks_);
+}
+
+/**
+ * @brief  Print the totals and the table heading.
+ * @param[in] uptime  Seconds since reset.
+ * @return None.
+ */
+void TerminalDashboard::printHeader(uint32_t uptime)
+{
+    float totalVolt = System_TotalVoltage(localPacks_);
+    int   sysSOC    = System_MinSoc(localPacks_);
 
     Serial.println("\n==========================================================");
     Serial.printf("   BMS MASTER DASHBOARD (Uptime: %lu s)\n", uptime);
     Serial.println("==========================================================");
-    
-    // --- IN THÔNG SỐ TỔNG (QUAN TRỌNG ĐỂ TEST SOC) ---
-    // localPacks[0].current là dòng TOÀN HỆ (cùng một dòng qua các bình nối tiếp).
-    // SOC thì KHÔNG: localPacks[i].soc là SOC riêng của bình i (Kalman trên slave),
-    // nên SOC hệ thống phải lấy qua System_MinSoc().
-    Serial.printf(" SYSTEM VOLTAGE: %6.2f V  |  CURRENT: %6.2f A\n", totalVolt, localPacks[0].current);
-    int sysSOC = System_MinSoc(localPacks);
-    if (sysSOC < 0) {
-        // Co slave offline -> khong biet binh mat tich co phai binh yeu nhat
+
+    /* localPacks_[0].current is the current of the WHOLE system, since the
+     * same current flows through batteries in series. SOC is NOT like that:
+     * localPacks_[i].soc belongs to battery i alone, computed by the Kalman
+     * filter on that slave, so the system SOC has to come from
+     * System_MinSoc(). */
+    Serial.printf(" SYSTEM VOLTAGE: %6.2f V  |  CURRENT: %6.2f A\n",
+                  totalVolt, localPacks_[0].current);
+
+    if (sysSOC < 0)
+    {
+        /* A slave is offline, so there is no way to tell whether the
+         * missing battery is the weakest one. */
         Serial.printf(" SYSTEM SOC    :  --  %%       |  MODE   : TEST (2S)\n");
-    } else {
-        Serial.printf(" SYSTEM SOC    : %3d %%       |  MODE   : TEST (2S)\n", sysSOC);
     }
-    
+    else
+    {
+        Serial.printf(" SYSTEM SOC    : %3d %%       |  MODE   : TEST (2S)\n",
+                      sysSOC);
+    }
+
     Serial.println("----------------------------------------------------------");
     Serial.println("| ID    | VOLTAGE | TEMP  | ERR  | STATUS      | UPDATED |");
     Serial.println("|-------|---------|-------|------|-------------|---------|");
 }
 
-void Terminal_Dashboard::printRow(int index, BmsPackState &pack) {
-    int canID = kCanBaseId + index;
+/**
+ * @brief  Print one pack row.
+ * @param[in] index  Pack index, used to derive its CAN identifier.
+ * @param[in] pack   That pack's state.
+ * @return None.
+ */
+void TerminalDashboard::printRow(uint8_t index, const BmsPackState &pack)
+{
+    unsigned canID = (unsigned)(kCanBaseId + index);
+
     Serial.printf("| 0x%03X | ", canID);
-    
-    if (pack.isConnected) {
-        // In nhiệt độ và mã lỗi nhận từ Slave qua mạng CAN
-        Serial.printf("%6.2f V | %3d C | 0x%02X | [ONLINE] ✅ | %4lu ms |\n", 
-                      pack.voltage, pack.temperature, pack.status, millis() - pack.lastUpdate);
-    } else {
-        Serial.printf(" --.-- V |  -- C | ---- | [LOST]   ❌ |  ----   |\n");
+
+    if (pack.isConnected)
+    {
+        Serial.printf("%6.2f V | %3d C | 0x%02X | [ONLINE] \xE2\x9C\x85 | %4lu ms |\n",
+                      pack.voltage, pack.temperature, pack.status,
+                      millis() - pack.lastUpdate);
+    }
+    else
+    {
+        Serial.printf(" --.-- V |  -- C | ---- | [LOST]   \xE2\x9D\x8C |  ----   |\n");
     }
 }
 
-void Terminal_Dashboard::printFooter() {
+/**
+ * @brief  Print the closing rule.
+ * @return None.
+ */
+void TerminalDashboard::printFooter()
+{
     Serial.println("==========================================================");
-}
-
-void Terminal_Dashboard::run() {
-    init();
-    while (1) {
-        fetchData();
-#ifdef CSV_LOG
-        /* Che do lay so lieu do sai so. Dau phay de Excel tach cot, dem khoang
-         * trang de doc thang hang ngay tren terminal.
-         *
-         * Ten cot sinh tu kCanBaseId nen khong the lech voi thuc te: v_103 la
-         * binh cua SLAVE_INDEX 0, v_104 la SLAVE_INDEX 1, ...
-         *
-         * Chu ky giu nguyen 1000 ms: slave chi gui frame moi 1000 ms nen in
-         * nhanh hon chi sinh ra cac dong trung lap, khong them thong tin. */
-        static bool s_hdr = false;
-        if (!s_hdr) {
-            Serial.print("  millis");
-            for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", v_%03X", kCanBaseId + i); }
-            for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", s_%03X", kCanBaseId + i); }
-            Serial.println();
-            s_hdr = true;
-        }
-        Serial.printf("%8lu", millis());
-        for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", %6.2f", localPacks[i].voltage); }
-        for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", %5d",   localPacks[i].soc);     }
-        Serial.println();
-#else
-        printHeader(millis() / 1000);
-        for(int i=0; i<kTotalPacks; i++) {
-            printRow(i, localPacks[i]);
-        }
-        printFooter();
-#endif
-        // Cập nhật màn hình mỗi 1 giây
-        vTaskDelay(pdMS_TO_TICKS(1000));
-    }
-}
-
-void Task_Terminal_Run(void *pvParameters) {
-    Terminal_Dashboard dashboard;
-    dashboard.run();
 }

@@ -1,76 +1,174 @@
+/**
+ * @file      Task_EspNow.cpp
+ * @author    Do Dang Gia Huy
+ * @brief     Peer setup and telemetry packing for the ESP-NOW link.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
+ */
+
+/**********************
+ *      INCLUDES
+ **********************/
+
 #include "Task_EspNow.h"
+
 #include <WiFi.h>
 #include <esp_wifi.h>
 
-// [ĐÃ THAY ĐỔI: Chuyển các biến toàn cục (outgoingData, peerInfo) thành thành viên của Class EspNow_Manager]
-EspNow_Manager::EspNow_Manager(const uint8_t* mac) {
-    memcpy(targetMac, mac, 6);
-    memset(&outgoingData, 0, sizeof(outgoingData));
+#include <string.h>
+
+/**********************
+ *      DEFINES
+ **********************/
+
+/** Send on whichever interface the peer is reachable through. */
+constexpr uint8_t kPeerDefaultChannel = 0U;
+
+/** Telemetry period. Slow enough that the LCD on the remote does not
+ * flicker. */
+constexpr TickType_t kTelemetryPeriod = pdMS_TO_TICKS(500);
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+namespace
+{
+void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status);
 }
 
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-    // In ra màn hình trạng thái gửi
-    Serial.print("[ESP-NOW TX] Status: ");
-    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success ✅" : "Delivery Fail ❌");
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/**********************
+ *      MACROS
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Copy the target address and clear the telemetry buffer.
+ * @param[in] mac  Six-byte MAC address of the remote.
+ */
+EspNowManager::EspNowManager(const uint8_t *mac)
+{
+    memcpy(targetMac_, mac, sizeof(targetMac_));
+    memset(&outgoingData_, 0, sizeof(outgoingData_));
 }
 
-// 2. Sửa hàm init() để đăng ký hàm báo cáo trên:
-bool EspNow_Manager::init() {
+/**
+ * @brief  Start ESP-NOW, pin the channel and register the peer.
+ * @return true once the peer is registered.
+ */
+bool EspNowManager::init()
+{
     WiFi.mode(WIFI_AP_STA);
 
-    // --- THÊM DÒNG NÀY: Ép chạy Kênh 1 ---
-    esp_wifi_set_channel(1, WIFI_SECOND_CHAN_NONE);
+    /* Force the radio onto the same channel the access point uses: ESP-NOW
+     * and the AP share one radio, and a mismatch silently kills ESP-NOW. */
+    esp_wifi_set_channel(kWifiApChannel, WIFI_SECOND_CHAN_NONE);
 
-    if (esp_now_init() != ESP_OK) return false;
+    if (esp_now_init() != ESP_OK)
+    {
+        return false;
+    }
 
-    // --- THÊM DÒNG NÀY ---
-    esp_now_register_send_cb(OnDataSent); 
+    esp_now_register_send_cb(onDataSent);
 
-    memcpy(peerInfo.peer_addr, targetMac, 6);
-    peerInfo.channel = 0;  
-    peerInfo.encrypt = false;
-    
-    if (esp_now_add_peer(&peerInfo) != ESP_OK) return false;
+    memcpy(peerInfo_.peer_addr, targetMac_, sizeof(targetMac_));
+    peerInfo_.channel = kPeerDefaultChannel;
+    peerInfo_.encrypt = false;
+
+    if (esp_now_add_peer(&peerInfo_) != ESP_OK)
+    {
+        return false;
+    }
+
     return true;
 }
 
-void EspNow_Manager::sendTelemetry() {
+/**
+ * @brief  Take a snapshot, pack it and send one telemetry frame.
+ * @return None.
+ */
+void EspNowManager::sendTelemetry()
+{
     BmsPackState snapPacks[kTotalPacks];
+
     System_Get_Snapshot(snapPacks);
 
-    outgoingData.totalVoltage  = System_TotalVoltage(snapPacks);
-    outgoingData.systemCurrent = snapPacks[0].current;
-    // SOC he thong = min cua cac binh; -1 khi co slave offline.
-    // Tay cam se nhan -1 -> can hien "--" o firmware ben do.
-    outgoingData.systemSOC = System_MinSoc(snapPacks);
+    outgoingData_.totalVoltage  = System_TotalVoltage(snapPacks);
+    outgoingData_.systemCurrent = snapPacks[0].current;
 
-    for (int i = 0; i < kTotalPacks; i++) {
-        outgoingData.packVolts[i] = snapPacks[i].voltage;
-        outgoingData.packTemps[i] = snapPacks[i].temperature; // <--- THÊM NHIỆT ĐỘ
-        outgoingData.packStatus[i] = snapPacks[i].status;     // <--- THÊM MÃ LỖI
-        outgoingData.isOnline[i] = snapPacks[i].isConnected;
+    /* System SOC is the minimum of the packs, and -1 when a slave is
+     * offline. The remote receives that -1 and has to render "--" in its own
+     * firmware. */
+    outgoingData_.systemSOC = System_MinSoc(snapPacks);
+
+    for (uint8_t i = 0U; i < kTotalPacks; i++)
+    {
+        outgoingData_.packVolts[i]  = snapPacks[i].voltage;
+        outgoingData_.packTemps[i]  = snapPacks[i].temperature;
+        outgoingData_.packStatus[i] = snapPacks[i].status;
+        outgoingData_.isOnline[i]   = snapPacks[i].isConnected;
     }
 
-    Serial.printf("[ESP-NOW] Packing Data... Total Volt: %.2f V | SOC: %d %%\n", outgoingData.totalVoltage, outgoingData.systemSOC);
-    esp_now_send(targetMac, (uint8_t *) &outgoingData, sizeof(outgoingData));
+    Serial.printf("[ESP-NOW] Packing data, total %.2f V, SOC %d %%\n",
+                  outgoingData_.totalVoltage, outgoingData_.systemSOC);
+
+    esp_now_send(targetMac_, (uint8_t *)&outgoingData_, sizeof(outgoingData_));
 }
 
-// --- FREE RTOS WRAPPER ---
-// [ĐÃ THAY ĐỔI: Viết lại hàm Wrapper để bọc toàn bộ Class OOP lại]
-void Task_EspNow_Run(void *pvParameters) {
-    // Kéo địa chỉ MAC từ Config.h vào
-    /* kRemoteMac is defined in Config.h. */
-    EspNow_Manager myEspNow(kRemoteMac);
+/**
+ * @brief  FreeRTOS entry point for the ESP-NOW broadcaster.
+ * @param[in] pvParameters  Unused.
+ * @return None.
+ */
+void Task_EspNow_Run(void *pvParameters)
+{
+    EspNowManager myEspNow(kRemoteMac);
 
-    if (!myEspNow.init()) {
+    (void)pvParameters;
+
+    if (!myEspNow.init())
+    {
         vTaskDelete(NULL);
     }
 
-    // 4. Vòng lặp bắn dữ liệu liên tục
-    while (1) {
+    while (1)
+    {
         myEspNow.sendTelemetry();
-        
-        // Nghỉ 500ms rồi bắn tiếp (Đảm bảo LCD trên tay cầm không bị nháy)
-        vTaskDelay(pdMS_TO_TICKS(500));
+        vTaskDelay(kTelemetryPeriod);
     }
 }
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/
+
+namespace
+{
+
+/**
+ * @brief  Transmission-complete callback registered with ESP-NOW.
+ * @param[in] mac_addr  Peer the frame was addressed to; unused.
+ * @param[in] status    Delivery result reported by the stack.
+ * @return None.
+ */
+void onDataSent(const uint8_t *mac_addr, esp_now_send_status_t status)
+{
+    (void)mac_addr;
+
+    Serial.print("[ESP-NOW TX] Status: ");
+    Serial.println(status == ESP_NOW_SEND_SUCCESS ? "delivery success"
+                                                  : "delivery fail");
+}
+
+}  /* namespace */
