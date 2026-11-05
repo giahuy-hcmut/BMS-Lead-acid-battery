@@ -1,6 +1,6 @@
 #include "Task_Current.h"
 
-CurrentSensor_Manager::CurrentSensor_Manager() : ina(INA219_I2C_ADDR) {
+CurrentSensor_Manager::CurrentSensor_Manager() : ina(kIna219I2cAddr) {
     for (uint8_t i = 0; i < AVG_SAMPLES; i++) { samples[i] = 0.0f; }
     sampleIndex = 0;
     primed      = false;
@@ -9,10 +9,10 @@ CurrentSensor_Manager::CurrentSensor_Manager() : ina(INA219_I2C_ADDR) {
 }
 
 void CurrentSensor_Manager::init() {
-    Wire.begin(PIN_INA_SDA, PIN_INA_SCL);
+    Wire.begin(kPinInaSda, kPinInaScl);
 
     /* begin() de PGA o /8 (+/-320 mV). Tren shunt 0.75 mOhm do la +/-427 A, nen
-     * nguong trip MAX_DISCHARGE_CURRENT (150 A) voi tay tro duoc va con du 277 A.
+     * nguong trip kMaxDischargeCurrentA (150 A) voi tay tro duoc va con du 277 A.
      *
      * Dieu nay DA DO tren bench - cap 3.27 V vi sai vao IN+/IN- va so doc kep o
      * dung 320.000 mV voi sd = 0 - chu KHONG lay tu tai lieu thu vien. Mot thang
@@ -32,7 +32,7 @@ bool CurrentSensor_Manager::probe(void) {
     /* Thuan Wire API, khong can biet thanh ghi nao. getShuntVoltage_mV() tra ve 0.0
      * CA khi dong that bang 0 LAN khi bus chet, va thu vien khong bao loi gi cua
      * rieng no - day la thu duy nhat phan biet duoc hai truong hop do. */
-    Wire.beginTransmission(INA219_I2C_ADDR);
+    Wire.beginTransmission(kIna219I2cAddr);
     return (Wire.endTransmission() == 0);
 }
 
@@ -80,7 +80,7 @@ void CurrentSensor_Manager::loop() {
              * Cong bo 0.0 A thay vi bao loi se de Kalman cua ca 5 slave tich dong
              * bang 0 VA de phep so (0 > 150 A) khong bao gio dung: hai that bai,
              * ca hai deu im lang. */
-            if (i2cFailRun >= CURRENT_FAULT_LIMIT) {
+            if (i2cFailRun >= kCurrentFaultLimit) {
                 currentSensorFault = true;
 
                 /* Vut bo dem: sau khi bus hoi, khong tron mau cu voi mau moi. */
@@ -88,7 +88,7 @@ void CurrentSensor_Manager::loop() {
                 sampleIndex = 0;
             }
         } else {
-            if (i2cFailRun >= CURRENT_FAULT_LIMIT) {
+            if (i2cFailRun >= kCurrentFaultLimit) {
                 /* Bus hoi sau mot lan mat THAT. Goi lai begin() thay vi tin rang
                  * chip con giu cau hinh - no co the da bi cup nguon. (Gia tri reset
                  * cua INA219 tinh co cung la PGA /8, nhung dua vao do la mot gia
@@ -109,16 +109,16 @@ void CurrentSensor_Manager::loop() {
 
                 /* Nhan (A/mV), khong chia - cung ly do Task_CAN giai ma bang *0.01f
                  * thay vi /100. */
-                float currentA = (mv - CURRENT_ZERO_MV) * CURRENT_SIGN
-                                 * (SHUNT_FULL_A / SHUNT_FULL_MV);
+                float currentA = (mv - kCurrentZeroMv) * kCurrentSign
+                                 * (kShuntFullA / kShuntFullMv);
 
-                if (fabsf(currentA) < CURRENT_IDLE_BAND) { currentA = 0.0f; }
+                if (fabsf(currentA) < kCurrentIdleBandA) { currentA = 0.0f; }
 
                 System_Update_Current(currentA);
             }
         }
 
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(TASK_CURRENT_PERIOD_MS));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(kTaskCurrentPeriodMs));
     }
 }
 

@@ -62,7 +62,7 @@ void CAN_Manager::sendCurrentFrame(float current_a) {
     /* `= {}` zero-fills data[], so bytes 2-7 go out as 0x00 without being
      * written again below. */
     twai_message_t msg = {};
-    msg.identifier = CAN_MASTER_ID;
+    msg.identifier = kCanMasterId;
     /* DLC 8 on BOTH directions, the J1939 convention: a fixed frame size means
      * adding a field later only fills a reserved byte instead of changing the
      * DLC, which would break every receiver that tests it. Bytes 2-7 are
@@ -74,7 +74,7 @@ void CAN_Manager::sendCurrentFrame(float current_a) {
     msg.data_length_code = 8;                        /* was 2, and 0 before that */
     msg.data[0] = (uint8_t)((raw >> 8) & 0xFF);      /* MSB first, matching   */
     msg.data[1] = (uint8_t)(raw & 0xFF);             /* bytes 2-3 of a slave  */
-    twai_transmit(&msg, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS));
+    twai_transmit(&msg, pdMS_TO_TICKS(kCanTxTimeoutMs));
 }
 
 bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
@@ -138,7 +138,7 @@ bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
  *
  * Constructor chi gan 4 bien, khong dung phan cung, nen an toan khi chay truoc
  * setup() nhu moi bien toan cuc C++ khac. */
-static CAN_Manager s_canBus(PIN_CAN_TX, PIN_CAN_RX, CAN_BAUD_RATE);
+static CAN_Manager s_canBus(kPinCanTx, kPinCanRx, kCanBaudRate);
 
 // --- RX: SU KIEN. Ngu 0% CPU khi bus im, thuc ~us sau khi co ngat. ---
 void Task_CAN_Rx_Run(void *pvParameters) {
@@ -178,6 +178,6 @@ void Task_CAN_Tx_Run(void *pvParameters) {
         if (System_Get_SlavesActive()) {
             s_canBus.sendCurrentFrame(System_Get_Current());
         }
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(CAN_MASTER_INTERVAL_MS));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(kCanMasterIntervalMs));
     }
 }

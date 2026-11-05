@@ -8,8 +8,8 @@ Logic_Manager::Logic_Manager() {
 
 void Logic_Manager::init() {
     // Khởi tạo chân Relay
-    pinMode(PIN_RELAY_CONTROL, OUTPUT);
-    digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF); // Luôn ngắt Relay lúc vừa khởi động để an toàn
+    pinMode(kPinRelayControl, OUTPUT);
+    digitalWrite(kPinRelayControl, kRelayOff); // Luôn ngắt Relay lúc vừa khởi động để an toàn
     
     Serial.println("[LOGIC] Manager Initialized. Relay Configured.");
 }
@@ -27,7 +27,7 @@ static void addReason(char *buf, size_t cap, const char *txt) {
 
 // Hàm cắt điện và in cảnh báo
 void Logic_Manager::lockSystem(const char* reason) {
-    digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF);
+    digitalWrite(kPinRelayControl, kRelayOff);
 
     /* Cap nhat ly do MOI LAN goi, khong chi lan dau: danh sach loi thay doi theo
      * thoi gian (mat them slave, het loi I2C...) va web phai thay hien trang. */
@@ -43,7 +43,7 @@ void Logic_Manager::lockSystem(const char* reason) {
 
 // Hàm cấp điện trở lại
 void Logic_Manager::unlockSystem() {
-    digitalWrite(PIN_RELAY_CONTROL, RELAY_ON);
+    digitalWrite(kPinRelayControl, kRelayOn);
     if (isSystemLocked) {
         isSystemLocked = false;
         systemLocked   = false;
@@ -54,7 +54,7 @@ void Logic_Manager::unlockSystem() {
 
 // BỘ NÃO ĐÁNH GIÁ AN TOÀN - gom TAT CA loi dang hoat dong, khong chi loi dau
 void Logic_Manager::evaluateProtection() {
-    BMS_Pack_State snaps[TOTAL_PACKS];
+    BMS_Pack_State snaps[kTotalPacks];
     System_Get_Snapshot(snaps);
 
     /* Weakest battery limits a series pack. -1 means at least one slave is
@@ -80,25 +80,25 @@ void Logic_Manager::evaluateProtection() {
 
     /* Liet ke DICH DANH binh nao hong thay vi chi bao "co loi": voi 5 binh thi
      * phai biet con nao moi sua duoc. KHONG `break` nua - phai gom het. */
-    for (int i = 0; i < TOTAL_PACKS; i++) {
+    for (int i = 0; i < kTotalPacks; i++) {
         char tag[24];
         if (!snaps[i].isConnected) {
             isSafe = false;
-            snprintf(tag, sizeof(tag), "Lost:0x%03X", CAN_BASE_ID + i);
+            snprintf(tag, sizeof(tag), "Lost:0x%03X", kCanBaseId + i);
             addReason(reasons, sizeof(reasons), tag);
         } else if (snaps[i].status != 0x00) {   /* 0x00 = ERROR_NONE */
             isSafe = false;
-            snprintf(tag, sizeof(tag), "HwErr:0x%03X", CAN_BASE_ID + i);
+            snprintf(tag, sizeof(tag), "HwErr:0x%03X", kCanBaseId + i);
             addReason(reasons, sizeof(reasons), tag);
         }
     }
 
-    if (iValid && snaps[0].current > MAX_DISCHARGE_CURRENT) {
+    if (iValid && snaps[0].current > kMaxDischargeCurrentA) {
         isSafe = false;
         addReason(reasons, sizeof(reasons), "Over Current");
     }
 
-    if (sysSoc >= 0 && sysSoc < MIN_SOC_SHUTDOWN) {
+    if (sysSoc >= 0 && sysSoc < kMinSocShutdownPct) {
         isSafe = false;
         addReason(reasons, sizeof(reasons), "Battery Depleted (Low SOC)");
     }
@@ -111,7 +111,7 @@ void Logic_Manager::evaluateProtection() {
          * nay luon di qua nhanh hysteresis: sau khi nguoi van hanh bat ON tren
          * web, relay chi dong khi SOC da du an toan.
          * sysSoc == -1 (con binh offline) cung bi chan o day - dung y do. */
-        if (sysSoc >= RECOVERY_SOC) {
+        if (sysSoc >= kRecoverySocPct) {
             unlockSystem();
         }
     }
@@ -133,6 +133,6 @@ void Task_Logic_Run(void *pvParameters) {
     
     while (1) {
         myLogic.evaluateProtection();
-        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(PROTECTION_PERIOD_MS));
+        vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(kProtectionPeriodMs));
     }
 }

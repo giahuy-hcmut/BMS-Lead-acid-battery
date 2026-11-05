@@ -1,7 +1,7 @@
 #include "Task_Terminal.h"
 
 Terminal_Dashboard::Terminal_Dashboard() {
-    for(int i=0; i<TOTAL_PACKS; i++) {
+    for(int i=0; i<kTotalPacks; i++) {
         localPacks[i].voltage = 0.0f;
         localPacks[i].isConnected = false;
         localPacks[i].current = 0.0f;
@@ -52,7 +52,7 @@ void Terminal_Dashboard::printHeader(uint32_t uptime) {
 }
 
 void Terminal_Dashboard::printRow(int index, BMS_Pack_State &pack) {
-    int canID = CAN_BASE_ID + index;
+    int canID = kCanBaseId + index;
     Serial.printf("| 0x%03X | ", canID);
     
     if (pack.isConnected) {
@@ -76,7 +76,7 @@ void Terminal_Dashboard::run() {
         /* Che do lay so lieu do sai so. Dau phay de Excel tach cot, dem khoang
          * trang de doc thang hang ngay tren terminal.
          *
-         * Ten cot sinh tu CAN_BASE_ID nen khong the lech voi thuc te: v_103 la
+         * Ten cot sinh tu kCanBaseId nen khong the lech voi thuc te: v_103 la
          * binh cua SLAVE_INDEX 0, v_104 la SLAVE_INDEX 1, ...
          *
          * Chu ky giu nguyen 1000 ms: slave chi gui frame moi 1000 ms nen in
@@ -84,18 +84,18 @@ void Terminal_Dashboard::run() {
         static bool s_hdr = false;
         if (!s_hdr) {
             Serial.print("  millis");
-            for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", v_%03X", CAN_BASE_ID + i); }
-            for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", s_%03X", CAN_BASE_ID + i); }
+            for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", v_%03X", kCanBaseId + i); }
+            for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", s_%03X", kCanBaseId + i); }
             Serial.println();
             s_hdr = true;
         }
         Serial.printf("%8lu", millis());
-        for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", %6.2f", localPacks[i].voltage); }
-        for (int i = 0; i < TOTAL_PACKS; i++) { Serial.printf(", %5d",   localPacks[i].soc);     }
+        for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", %6.2f", localPacks[i].voltage); }
+        for (int i = 0; i < kTotalPacks; i++) { Serial.printf(", %5d",   localPacks[i].soc);     }
         Serial.println();
 #else
         printHeader(millis() / 1000);
-        for(int i=0; i<TOTAL_PACKS; i++) {
+        for(int i=0; i<kTotalPacks; i++) {
             printRow(i, localPacks[i]);
         }
         printFooter();

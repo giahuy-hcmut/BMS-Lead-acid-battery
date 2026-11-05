@@ -28,7 +28,7 @@ public:
     // 100% CPU suốt thời gian bus hỏng.
     bool readMessage(BMS_Message_t &msgOut);
 
-    // Gửi frame CAN_MASTER_ID chở dòng pack.
+    // Gửi frame kCanMasterId chở dòng pack.
     //   current_a : ampe, >0 = XẢ (quy ước chốt cho cả hệ)
     // Đóng gói: int16 bù 2, MSB trước, A x100 - giống byte 2-3 frame slave.
     void sendCurrentFrame(float current_a);

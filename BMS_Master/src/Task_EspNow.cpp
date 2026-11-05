@@ -35,7 +35,7 @@ bool EspNow_Manager::init() {
 }
 
 void EspNow_Manager::sendTelemetry() {
-    BMS_Pack_State snapPacks[TOTAL_PACKS];
+    BMS_Pack_State snapPacks[kTotalPacks];
     System_Get_Snapshot(snapPacks);
 
     outgoingData.totalVoltage  = System_TotalVoltage(snapPacks);
@@ -44,7 +44,7 @@ void EspNow_Manager::sendTelemetry() {
     // Tay cam se nhan -1 -> can hien "--" o firmware ben do.
     outgoingData.systemSOC = System_MinSoc(snapPacks);
 
-    for (int i = 0; i < TOTAL_PACKS; i++) {
+    for (int i = 0; i < kTotalPacks; i++) {
         outgoingData.packVolts[i] = snapPacks[i].voltage;
         outgoingData.packTemps[i] = snapPacks[i].temperature; // <--- THÊM NHIỆT ĐỘ
         outgoingData.packStatus[i] = snapPacks[i].status;     // <--- THÊM MÃ LỖI
@@ -59,8 +59,8 @@ void EspNow_Manager::sendTelemetry() {
 // [ĐÃ THAY ĐỔI: Viết lại hàm Wrapper để bọc toàn bộ Class OOP lại]
 void Task_EspNow_Run(void *pvParameters) {
     // Kéo địa chỉ MAC từ Config.h vào
-    const uint8_t mac[] = REMOTE_MAC_ADDRESS;
-    EspNow_Manager myEspNow(mac);
+    /* kRemoteMac is defined in Config.h. */
+    EspNow_Manager myEspNow(kRemoteMac);
 
     if (!myEspNow.init()) {
         vTaskDelete(NULL);

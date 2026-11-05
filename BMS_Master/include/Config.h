@@ -1,135 +1,248 @@
-#ifndef CONFIG_H
-#define CONFIG_H
+/**
+ * @file      Config.h
+ * @author    Do Dang Gia Huy
+ * @brief     Build-time configuration of the BMS central controller.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
+ *
+ * Every value here is a typed `constexpr`, not a `#define`, so the compiler
+ * checks it and the debugger can resolve it. The only remaining macros are
+ * CSV_LOG and VCAN_LOOPBACK, which select code with #ifdef and therefore
+ * cannot be anything else.
+ *
+ * Naming note: headers keep the .h extension instead of the .hpp the style
+ * guide asks for, because PlatformIO and the Arduino framework expect .h and
+ * renaming would touch every include in the project for no benefit.
+ */
+
+#ifndef CONFIG_H_
+#define CONFIG_H_
+
+/**********************
+ *      INCLUDES
+ *********************/
 
 #include <Arduino.h>
 
-// --- 1. CẤU HÌNH HỆ THỐNG PIN ---
-#define TOTAL_PACKS             5       // Số lượng bình ắc quy (Sửa số này nếu nâng cấp xe)
-#define CAN_BASE_ID             0x103   // ID bắt đầu của Pack 1
+#include <stdint.h>
 
-// --- 2. CẤU HÌNH CAN BUS ---
-#define PIN_CAN_TX              GPIO_NUM_32
-#define PIN_CAN_RX              GPIO_NUM_35
-#define CAN_BAUD_RATE           500000
-#define CAN_QUEUE_LENGTH        20      // Chiều dài bộ đệm tin nhắn CAN
-// Frame master -> slave. Chở dòng điện pack VÀ đóng luôn vai heartbeat: slave
-// thức khi nhận được nó, ngủ sau 5 s không thấy. Không có frame heartbeat
-// riêng. Cùng tên CAN_MASTER_ID với Board_Config.h bên slave.
-#define CAN_MASTER_ID           0x100
-#define CAN_MASTER_INTERVAL_MS  5       // 200 Hz - nhịp Predict của Kalman bên slave
-#define CAN_TX_TIMEOUT_MS       10      // Timeout twai_transmit (ms)
+/**********************
+ *      DEFINES
+ *********************/
 
-// Nhịp quét bảo vệ (Task_Logic). 10ms: quá dòng phát hiện <=10ms, vẫn nhường CPU.
-#define PROTECTION_PERIOD_MS    10
+/* --- Conditional-compilation switches ---------------------------------
+ * These select code, so they must stay macros.
+ */
 
-// --- 3. TIMEOUT SLAVE ---
-// Không nhận frame của một slave trong khoảng này -> coi là mất kết nối
-// (System_Get_Snapshot() đặt isConnected = false, Task_Logic ngắt relay).
-// Tên cũ là LCD_TIMEOUT, nhưng nó chưa bao giờ liên quan gì tới LCD: đây là
-// timeout của CAN, và System_Data.cpp mới là chỗ dùng chính.
-// LCD đã bỏ, giải phóng GPIO 21/22 (I2C) cho MCP2515.
-#define SLAVE_TIMEOUT_MS        3000
+/* Error-measurement mode. Uncomment to make Task_Terminal print CSV instead
+ * of the dashboard table, AND to disable Task_VehicleCAN: that task prints
+ * "[VCAN] TX stuck" about four lines a second while no vehicle node is
+ * connected, which pollutes the CSV file. Comment it out again afterwards. */
+/* #define CSV_LOG */
 
-// --- 4. CẤU HÌNH ESP-NOW ---
-// Địa chỉ MAC của Tay Cầm (B8:D6:1A:B8:9C:CC)
-// Địa chỉ 192.168.4.1
-#define REMOTE_MAC_ADDRESS      {0xB8, 0xD6, 0x1A, 0xB8, 0x9C, 0xCC}
+/* Bring-up without any bus: the MCP2515 loops its own frames back. */
+/* #define VCAN_LOOPBACK */
 
-// --- 5. CẤU HÌNH WEB SERVER (WIFI AP) ---
-#define WIFI_AP_SSID            "MURATA_EV_BMS" // Tên WiFi phát ra
-#define WIFI_AP_PASS            "12345677"      // Mật khẩu WiFi (ít nhất 8 ký tự)
-#define WIFI_AP_CHANNEL         1               // BẮT BUỘC LÀ 1 ĐỂ KHÔNG CHẾT ESP-NOW
-#define WEB_UPDATE_INTERVAL     500             // Tốc độ làm mới Web (ms)
+/* ======================================================================
+ *  1. Battery pack
+ * ===================================================================== */
 
-// --- CHE DO DO SAI SO (chi bat khi lay so lieu calib) ---
-// Bo comment: Task_Terminal xuat CSV thay vi bang dashboard, VA tat
-// Task_VehicleCAN (no in "[VCAN] TX tac" ~4 dong/giay khi chua noi node xe,
-// lam ban file CSV). Comment lai sau khi do xong.
-//#define CSV_LOG
+/** Number of batteries in the series string. */
+constexpr uint8_t kTotalPacks = 5U;
 
-// --- 6. CẢM BIẾN DÒNG: INA219 + SHUNT NGOÀI ---
-// SOC KHÔNG còn tính ở master: mỗi slave chạy Kalman rồi gửi về ở byte 4 của
-// frame CAN, master lấy min qua System_MinSoc(). Các hằng số phục vụ bộ đếm
-// Coulomb cũ (BATTERY_CAPACITY_AH, VOLTAGE_SYS_*) đã xoá cùng bộ đếm đó.
-//
-// Shunt 100 A / 75 mV = 0.75 mOhm, class 0.5. R100 (0.1 Ohm) trên module ĐÃ GỠ:
-// để lại thì nó nằm song song 2 dây sense và rút 0.75 A qua dây dành cho microvolt.
-//
-// Đo LOW-SIDE ở cực âm pack. Common-mode của INA219 chỉ 0-26 V, không chịu được
-// 60 V (72-75 V lúc sạc) của high-side. GND của ESP32 bám vào đầu IN- (phía cực
-// âm pack) nên chiều XẢ nằm trong dải hợp lệ; chiều regen ra ngoài spec (-56 mV
-// ở 75 A) nhưng vẫn trong absolute max -0.3 V. Ghi rõ giới hạn này trong báo cáo.
-//
-// Số ĐO THẬT trên bench (Code/BENCH_INA219, 2026-08-12) - không phải số datasheet:
-//   thang đo  320 mV -> +/-427 A   (kẹp ở đúng 320.000 khi cấp 3.27 V vi sai)
-//   offset    -17.5 uV = -23.3 mA  -> 0.117 %/h trôi Coulomb trên 20 Ah
-//   nhiễu     27.2 uV 1 mẫu        -> 12.8 mA sau lọc 8 mẫu
-//   bước      10 uV = 13.3 mA
-//   gain      khớp vôn kế trong 1 % (datasheet ±1 %, shunt class 0.5 -> tổng ±1.5 %)
-#define INA219_I2C_ADDR         0x40
-#define PIN_INA_SDA             21
-#define PIN_INA_SCL             22
+/** CAN identifier of pack 0; pack i answers on kCanBaseId + i. */
+constexpr uint32_t kCanBaseId = 0x103U;
 
-#define SHUNT_FULL_A            100.0f
-#define SHUNT_FULL_MV           75.0f
+/* ======================================================================
+ *  2. Internal CAN bus, master <-> slaves (ESP32 TWAI)
+ * ===================================================================== */
 
-// Đo ở bước 5 của bench, SAU khi hàn shunt (gồm cả nhiệt điện động mối nối: hàn
-// vào chỉ làm offset dịch 6 uV, nên mối hàn sạch).
-#define CURRENT_ZERO_MV         (-0.0175f)
+constexpr gpio_num_t kPinCanTx = GPIO_NUM_32;
+constexpr gpio_num_t kPinCanRx = GPIO_NUM_35;
 
-// +1 = dòng XẢ ra số DƯƠNG. Đặt theo cách đấu dây: IN+ ở đầu mà dòng ĐI VÀO shunt
-// khi xả (phía điểm mass sao).
-//
-// CHƯA xác nhận bằng dòng thật - không có tải trên bàn. PHẢI kiểm ở lần chạy xe
-// đầu tiên: SOC phải GIẢM, byte 5 của 0x200 phải = 2 (DISCHARGE), dòng trên web
-// phải DƯƠNG. Sai thì đổi thành -1.0f, KHÔNG tháo dây.
-//
-// Dấu sai là NGUY HIỂM: packI âm làm (packI > MAX_DISCHARGE_CURRENT) luôn sai
-// -> bảo vệ quá dòng tắt hoàn toàn. Bù lại nó rất ồn ào (SOC tăng khi đang chạy)
-// nên hoãn được, miễn là nằm trong checklist khởi động.
-#define CURRENT_SIGN            (+1.0f)
+constexpr uint32_t kCanBaudRate    = 500000U;
+constexpr uint8_t  kCanQueueLength = 20U;   /**< frames buffered from the ISR */
 
-// Vùng chết quanh 0: dưới ngưỡng này Task_Current ép dòng về đúng 0.0. 0.5 A là
-// ~21x nhiễu đo được (12.8 mA sau lọc) nên nó không cắt mất tín hiệu thật.
-// Task_VehicleCAN dùng lại CHÍNH hằng này làm ranh giới "đang nghỉ" - một con số,
-// hai chỗ đọc, không có cơ hội lệch nhau.
-#define CURRENT_IDLE_BAND       0.5f
-#define TASK_CURRENT_PERIOD_MS  3       // 8 mẫu x 3 ms = cửa sổ lọc 24 ms
-#define CURRENT_FAULT_LIMIT     20      // lần I2C không ACK LIÊN TIẾP -> báo mất
+/** Master -> slave frame. Carries the pack current AND doubles as the
+ * heartbeat: a slave wakes when it arrives and sleeps after 5 s of silence.
+ * There is no separate heartbeat frame. The slave calls the same identifier
+ * CAN_MASTER_ID in its Board_Config.h. */
+constexpr uint32_t kCanMasterId = 0x100U;
 
-// --- 7. CẤU HÌNH BẢO VỆ & ĐIỀU KHIỂN RELAY ---
-#define PIN_RELAY_CONTROL       23      // Chân xuất tín hiệu điều khiển Relay tổng
-// Lưu ý: Đa số Module Relay cách ly quang (Opto) kích ở mức THẤP (LOW). 
-// Nếu module của bạn kích mức CAO, hãy đảo ngược lại định nghĩa này.
-#define RELAY_ON                HIGH    
-#define RELAY_OFF               LOW     
+/** 200 Hz, which is the rate of the Kalman Predict step on each slave. */
+constexpr uint32_t kCanMasterIntervalMs = 5U;
 
-// Ngưỡng quá dòng (A) - ngắt relay khi vượt.
-// 50 A là số cũ từ hồi giả định xe rút 50 A. Thực tế là 4 motor BLDC x 25 A
-// = ~100 A đỉnh, nên 50 A sẽ NGẮT RELAY GIỮA LÚC TĂNG TỐC BÌNH THƯỜNG.
-// 150 A = 1.5x đỉnh dự kiến, và 65% của Max Discharge Current 230 A trong
-// datasheet CSB EVX12200 -> vừa không ngắt oan, vừa dưới giới hạn của bình.
-// TODO xác nhận lại theo giới hạn dòng của bộ điều khiển motor khi có số.
-#define MAX_DISCHARGE_CURRENT   150.0f
-#define MIN_SOC_SHUTDOWN        5       // Mức % SOC thấp nhất cho phép chạy (Bảo vệ cạn bình)
-#define RECOVERY_SOC            10      // Mức % SOC an toàn để tự động đóng Relay trở lại (Hysteresis)
+/** Timeout handed to twai_transmit(). */
+constexpr uint32_t kCanTxTimeoutMs = 10U;
 
-// --- 8. CẤU HÌNH CAN XE (MCP2515 qua SPI) ---
-// ESP32 chỉ có MỘT bộ TWAI và nó đã cõng bus nội bộ master<->slave, nên bus xe
-// bắt buộc cần controller CAN thứ hai. Module HW-184: MCP2515 + TJA1050.
-//
-// Dùng GPIO Matrix để gán lại chân SPI tối ưu mạch PCB:
-#define PIN_VCAN_SCK            27
-#define PIN_VCAN_MOSI           26
-#define PIN_VCAN_MISO           25      // MISO = Input
-#define PIN_VCAN_CS             33
-#define PIN_VCAN_INT            14      // INT = Input
-#define VCAN_STATUS_ID          0x200   // BMS -> xe: số liệu hệ thống
-#define VCAN_PACK_ID            0x201   // BMS -> xe: từng bình, ghép kênh
-#define VCAN_PERIOD_MS          100
-#define VCAN_TX_FAIL_LIMIT      10      // thất bại LIÊN TIẾP -> re-init
+/* ======================================================================
+ *  3. Protection scan and slave timeout
+ * ===================================================================== */
 
-// Bật để bring-up KHÔNG cần bus nào: MCP2515 tự nhận lại frame mình gửi.
-//#define VCAN_LOOPBACK
+/** Period of the Task_Logic safety scan. 10 ms detects an over-current
+ * within one period and still leaves the CPU to everything else. */
+constexpr uint32_t kProtectionPeriodMs = 10U;
 
-#endif /* CONFIG_H */
+/** No frame from a slave for this long means it is disconnected:
+ * System_Get_Snapshot() clears isConnected and Task_Logic opens the relay.
+ * The old name was LCD_TIMEOUT, which was never about the LCD - it has
+ * always been a CAN timeout, and System_Data.cpp is its main user. */
+constexpr uint32_t kSlaveTimeoutMs = 3000U;
+
+/* ======================================================================
+ *  4. ESP-NOW link to the handheld remote
+ * ===================================================================== */
+
+/** MAC address of the remote, B8:D6:1A:B8:9C:CC. */
+constexpr uint8_t kRemoteMac[6] = {0xB8U, 0xD6U, 0x1AU, 0xB8U, 0x9CU, 0xCCU};
+
+/* ======================================================================
+ *  5. Web server, Wi-Fi access point
+ * ===================================================================== */
+
+constexpr const char *kWifiApSsid = "MURATA_EV_BMS";
+constexpr const char *kWifiApPass = "12345677";   /**< at least 8 characters */
+
+/** MUST be 1: ESP-NOW and the access point share the radio, and a mismatched
+ * channel kills ESP-NOW. */
+constexpr uint8_t kWifiApChannel = 1U;
+
+/** Server-sent-event refresh period. */
+constexpr uint32_t kWebUpdateIntervalMs = 500U;
+
+/* ======================================================================
+ *  6. Current sensing: INA219 + external shunt
+ * ===================================================================== */
+
+/* SOC is no longer computed here: every slave runs its own Kalman filter and
+ * reports the result in byte 4 of its CAN frame, and the master takes the
+ * minimum through System_MinSoc(). The constants that fed the old Coulomb
+ * counter (BATTERY_CAPACITY_AH, VOLTAGE_SYS_*) were deleted with it.
+ *
+ * Shunt 100 A / 75 mV = 0.75 mOhm, class 0.5. The R100 (0.1 Ohm) resistor on
+ * the module HAS BEEN REMOVED: left in place it sits across the two sense
+ * wires and draws 0.75 A through a pair meant for microvolts.
+ *
+ * Measured LOW SIDE, at the pack negative. The INA219 common-mode range is
+ * only 0-26 V and cannot take the 60 V of the high side, 72-75 V while
+ * charging. The ESP32 ground sits at IN-, on the pack negative side, so the
+ * discharge direction stays inside the valid range; regeneration falls
+ * outside the specified range (-56 mV at 75 A) but within the absolute
+ * maximum of -0.3 V. State that limit in the report.
+ *
+ * Numbers MEASURED on the bench (Code/BENCH_INA219, 2026-08-12), not taken
+ * from a datasheet:
+ *   range   320 mV -> +/-427 A   (pinned at exactly 320.000 for 3.27 V diff)
+ *   offset  -17.5 uV = -23.3 mA  -> 0.117 %/h of Coulomb drift on 20 Ah
+ *   noise   27.2 uV on one sample -> 12.8 mA after the 8-sample filter
+ *   step    10 uV = 13.3 mA
+ *   gain    within 1% of the meter (datasheet +/-1%, shunt class 0.5, so
+ *           +/-1.5% in total)
+ */
+
+constexpr uint8_t kIna219I2cAddr = 0x40U;
+constexpr uint8_t kPinInaSda     = 21U;
+constexpr uint8_t kPinInaScl     = 22U;
+
+constexpr float kShuntFullA  = 100.0f;
+constexpr float kShuntFullMv = 75.0f;
+
+/** Measured at bench step 5, AFTER soldering the shunt, so it includes the
+ * thermoelectric effect of the joints: soldering moved the offset by 6 uV,
+ * which means the joints are clean. */
+constexpr float kCurrentZeroMv = -0.0175f;
+
+/** +1 makes a DISCHARGE current come out POSITIVE. It follows the wiring:
+ * IN+ is the end the current ENTERS the shunt through while discharging, on
+ * the star-ground side.
+ *
+ * NOT yet confirmed against a real current - there was no load on the bench.
+ * It MUST be checked on the first drive: SOC must FALL, byte 5 of 0x200 must
+ * read 2 (DISCHARGE), and the current on the web page must be POSITIVE. If
+ * not, change this to -1.0f; do NOT rewire.
+ *
+ * A wrong sign is DANGEROUS: a negative packI makes the test
+ * (packI > kMaxDischargeCurrentA) permanently false, which disables the
+ * over-current protection completely. It is at least very loud - the SOC
+ * climbs while driving - so it can wait, as long as it is on the start-up
+ * checklist. */
+constexpr float kCurrentSign = +1.0f;
+
+/** Dead band around zero: below this Task_Current forces the current to
+ * exactly 0.0. 0.5 A is about 21x the measured noise (12.8 mA after
+ * filtering), so it cannot swallow a real signal. Task_VehicleCAN reuses
+ * THIS constant as its "at rest" boundary - one number, two readers, no
+ * chance of the two drifting apart. */
+constexpr float kCurrentIdleBandA = 0.5f;
+
+/** 8 samples x 3 ms = a 24 ms filter window. */
+constexpr uint32_t kTaskCurrentPeriodMs = 3U;
+
+/** Consecutive I2C transactions without an ACK before the sensor counts as
+ * lost. */
+constexpr uint16_t kCurrentFaultLimit = 20U;
+
+/* ======================================================================
+ *  7. Protection thresholds and relay control
+ * ===================================================================== */
+
+constexpr uint8_t kPinRelayControl = 23U;
+
+/** Most opto-isolated relay modules are active LOW. Invert these two if the
+ * module in use is active HIGH. */
+constexpr uint8_t kRelayOn  = HIGH;
+constexpr uint8_t kRelayOff = LOW;
+
+/** Over-current trip, A.
+ * 50 A was the old figure, from when the vehicle was assumed to draw 50 A.
+ * It really draws 4 BLDC motors x 25 A, about 100 A peak, so 50 A WOULD HAVE
+ * OPENED THE RELAY DURING NORMAL ACCELERATION. 150 A is 1.5x the expected
+ * peak and 65% of the 230 A maximum discharge current in the CSB EVX12200
+ * datasheet: high enough not to trip for nothing, low enough to stay under
+ * the battery limit.
+ * TODO confirm against the motor controller current limit once known. */
+constexpr float kMaxDischargeCurrentA = 150.0f;
+
+constexpr int kMinSocShutdownPct = 5;   /**< below this the relay opens      */
+constexpr int kRecoverySocPct    = 10;  /**< hysteresis for closing it again */
+
+/* ======================================================================
+ *  8. Vehicle CAN bus, MCP2515 over SPI
+ * ===================================================================== */
+
+/* The ESP32 has only ONE TWAI controller and it already carries the internal
+ * master-slave bus, so the vehicle bus needs a second CAN controller. Module
+ * HW-184: MCP2515 + TJA1050. The SPI pins are remapped through the GPIO
+ * matrix to suit the PCB layout. */
+
+constexpr uint8_t kPinVcanSck  = 27U;
+constexpr uint8_t kPinVcanMosi = 26U;
+constexpr uint8_t kPinVcanMiso = 25U;
+constexpr uint8_t kPinVcanCs   = 33U;
+constexpr uint8_t kPinVcanInt  = 14U;
+
+constexpr uint32_t kVcanStatusId = 0x200U;  /**< BMS -> vehicle: system data */
+constexpr uint32_t kVcanPackId   = 0x201U;  /**< BMS -> vehicle: one pack    */
+
+constexpr uint32_t kVcanPeriodMs    = 100U;
+constexpr uint8_t  kVcanTxFailLimit = 10U;  /**< consecutive fails -> re-init */
+
+/* ======================================================================
+ *  9. Shared wire-format constants
+ * ===================================================================== */
+
+/* Both CAN paths encode a current the same way, so the constants live in one
+ * place instead of being retyped in Task_CAN.cpp and Task_VehicleCAN.cpp. */
+
+/** Clamp applied BEFORE scaling. An int16 in hundredths of an amp spans
+ * +/-327.67 A, so an unclamped sensor glitch would wrap the sign and tell
+ * the receiver the pack is charging while it is being discharged. */
+constexpr float kCurrentClampA = 320.0f;
+
+/** Voltage and current both travel as hundredths of their unit. */
+constexpr float kScaleX100 = 100.0f;
+
+/** Mask for extracting one byte of a multi-byte field. */
+constexpr uint16_t kByteMask = 0xFFU;
+
+#endif /*CONFIG_H_*/

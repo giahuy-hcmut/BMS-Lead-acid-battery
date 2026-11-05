@@ -30,19 +30,19 @@ typedef struct {
     uint8_t soc;           // SOC (%) tu bo loc Kalman tren slave - byte 4
 } BMS_Message_t;
 
-// [ĐÃ THAY ĐỔI: Đưa struct ESP-NOW vào đây, dùng Macro TOTAL_PACKS để tránh lỗi khi đổi số bình]
+// [ĐÃ THAY ĐỔI: Đưa struct ESP-NOW vào đây, dùng Macro kTotalPacks để tránh lỗi khi đổi số bình]
 typedef struct __attribute__((packed)) {
     float totalVoltage;     // 4 bytes
     float systemCurrent;    // 4 bytes
     int   systemSOC;        // 4 bytes
-    float packVolts[TOTAL_PACKS];     // 20 bytes (5 packs)
-    int8_t packTemps[TOTAL_PACKS];    // 5 bytes
-    uint8_t packStatus[TOTAL_PACKS];  // 5 bytes
-    bool  isOnline[TOTAL_PACKS];      // 5 bytes
+    float packVolts[kTotalPacks];     // 20 bytes (5 packs)
+    int8_t packTemps[kTotalPacks];    // 5 bytes
+    uint8_t packStatus[kTotalPacks];  // 5 bytes
+    bool  isOnline[kTotalPacks];      // 5 bytes
 } BMS_Telemetry_Packet;     // Tổng cộng: 47 bytes
 
 // Biến toàn cục (Chỉ khai báo extern, không dùng trực tiếp ở các Task)
-extern BMS_Pack_State globalPacks[TOTAL_PACKS]; 
+extern BMS_Pack_State globalPacks[kTotalPacks]; 
 extern SemaphoreHandle_t dataMutex;   
 extern QueueHandle_t canQueue;        
 
@@ -57,7 +57,7 @@ bool System_Get_SlavesActive(void);
 extern volatile bool systemLocked;
 extern char faultReason[128];   // 128: chua duoc NHIEU ly do noi bang " | "
 
-// Cam bien dong da mat: I2C khong ACK CURRENT_FAULT_LIMIT lan LIEN TIEP.
+// Cam bien dong da mat: I2C khong ACK kCurrentFaultLimit lan LIEN TIEP.
 // Task_Current ghi · Task_Logic + Task_VehicleCAN doc.
 //
 // Cung khuon systemLocked: MOT nguoi ghi, nhieu nguoi doc, volatile, khong mutex.
@@ -78,7 +78,7 @@ void System_Get_Snapshot(BMS_Pack_State *snapshotArray);
 // System_Get_Snapshot() khoá mutex rồi lặp cả 5 pack, quá nặng cho đường đó.
 float System_Get_Current(void);
 
-// Số bình đang giám sát. Hôm nay = TOTAL_PACKS.
+// Số bình đang giám sát. Hôm nay = kTotalPacks.
 // Móc treo cho tính năng "nhập số pack trên web": khi làm, chỉ đổi thân hàm này
 // + thêm setter, không phải rà lại các vòng lặp rải khắp 6 file.
 uint8_t System_GetPackCount(void);

@@ -14,7 +14,7 @@ bool WebServer_Manager::init() {
     
     // 2. Cấu hình mạng phát ra (SSID, Pass, Channel, Ẩn=0, Số lượng truy cập=4)
     // CỰC KỲ QUAN TRỌNG: Kênh phải là 1 để khớp với ESP-NOW
-    WiFi.softAP(WIFI_AP_SSID, WIFI_AP_PASS, WIFI_AP_CHANNEL, 0, 4);
+    WiFi.softAP(kWifiApSsid, kWifiApPass, kWifiApChannel, 0, 4);
     
     Serial.print("[WEB] Access Point Started! IP: ");
     Serial.println(WiFi.softAPIP());
@@ -48,7 +48,7 @@ bool WebServer_Manager::init() {
 }
 
 String WebServer_Manager::buildJsonString() {
-    BMS_Pack_State snapPacks[TOTAL_PACKS];
+    BMS_Pack_State snapPacks[kTotalPacks];
     System_Get_Snapshot(snapPacks);
 
     float totalV = System_TotalVoltage(snapPacks);
@@ -58,7 +58,7 @@ String WebServer_Manager::buildJsonString() {
     String json = "{";
 
     json += "\"packs\":[";
-    for(int i=0; i<TOTAL_PACKS; i++) {
+    for(int i=0; i<kTotalPacks; i++) {
         json += "{\"volt\":";
         json += String(snapPacks[i].voltage, 2);
 
@@ -80,7 +80,7 @@ String WebServer_Manager::buildJsonString() {
         json += snapPacks[i].isConnected ? "true" : "false";
         json += "}";
         
-        if (i < TOTAL_PACKS - 1) json += ","; 
+        if (i < kTotalPacks - 1) json += ","; 
     }
     json += "],";
     
@@ -118,6 +118,6 @@ void Task_WebServer_Run(void *pvParameters) {
     while (1) {
         myWeb.broadcastData();
         // Cập nhật mỗi 500ms
-        vTaskDelay(pdMS_TO_TICKS(WEB_UPDATE_INTERVAL)); 
+        vTaskDelay(pdMS_TO_TICKS(kWebUpdateIntervalMs)); 
     }
 }

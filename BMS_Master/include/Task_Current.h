@@ -24,7 +24,7 @@ class CurrentSensor_Manager {
 private:
     Adafruit_INA219 ina;
 
-    static const uint8_t AVG_SAMPLES = 8;   // 8 x TASK_CURRENT_PERIOD_MS = 24 ms
+    static const uint8_t AVG_SAMPLES = 8;   // 8 x kTaskCurrentPeriodMs = 24 ms
     float    samples[AVG_SAMPLES];
     uint8_t  sampleIndex;
     bool     primed;                        // da du AVG_SAMPLES mau TUOI chua

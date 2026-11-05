@@ -11,7 +11,7 @@ VehicleCAN_Manager::VehicleCAN_Manager(uint8_t csPin) : mcp(csPin) {
 
 bool VehicleCAN_Manager::init() {
     // Định tuyến bộ SPI sang các chân mới
-    SPI.begin(PIN_VCAN_SCK, PIN_VCAN_MISO, PIN_VCAN_MOSI, -1);
+    SPI.begin(kPinVcanSck, kPinVcanMiso, kPinVcanMosi, -1);
 
     /* MCP_8MHZ phải khớp thạch anh in trên board (X1 = "8.000" trên HW-184).
      * Khai MCP_16MHZ như phần lớn ví dụ trên mạng làm bit timing sai đúng gấp
@@ -45,7 +45,7 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
     uint8_t flags     = 0;
     bool    allOnline = true;
 
-    /* Cam bien dong con song khong. Task_Current dat co nay sau CURRENT_FAULT_LIMIT
+    /* Cam bien dong con song khong. Task_Current dat co nay sau kCurrentFaultLimit
      * lan I2C khong ACK lien tiep. Khi mat, packI la so CU dong lai trong kho -
      * khong duoc dung no de suy bat cu dieu gi. */
     bool    iValid    = !currentSensorFault;
@@ -69,14 +69,14 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
 
     /* Bao qua dong CHI khi so dong con tin duoc. Bao "qua dong" dua tren mot gia
      * tri vo hieu con te hon la khong bao gi: xe se phanh tai vi mot con so rac. */
-    if (iValid && (packI > MAX_DISCHARGE_CURRENT)) {
+    if (iValid && (packI > kMaxDischargeCurrentA)) {
         flags |= VCAN_FLAG_OVER_CURRENT;
     }
 
-    /* CURRENT_IDLE_BAND là vùng chết mà Task_Current đã áp: dưới ngưỡng đó nó ép
+    /* kCurrentIdleBandA là vùng chết mà Task_Current đã áp: dưới ngưỡng đó nó ép
      * dòng về đúng 0.0, nên dùng lại cùng con số làm ranh giới "đang nghỉ" thay vì
      * gõ một hằng số thứ hai có thể lệch. */
-    const float idleBand = CURRENT_IDLE_BAND;
+    const float idleBand = kCurrentIdleBandA;
 
     /* !iValid -> FAULT, không phải IDLE. Task_Logic cũng sẽ ngắt relay vì mất cảm
      * biến, nhưng nó chỉ quét mỗi ~100 ms; trong khe đó systemLocked vẫn false và
@@ -113,7 +113,7 @@ void VehicleCAN_Manager::buildPackDetail(const BMS_Pack_State *snaps, uint8_t *o
     uint8_t count = System_GetPackCount();
     uint8_t idx   = muxIndex;
 
-    /* Xoay chỉ số theo count chứ không theo TOTAL_PACKS: khi web cho nhập số
+    /* Xoay chỉ số theo count chứ không theo kTotalPacks: khi web cho nhập số
      * pack, vòng quét tự co lại thay vì gửi frame rỗng cho bình không tồn tại. */
     muxIndex = (uint8_t)((muxIndex + 1U) % count);
 
@@ -141,7 +141,7 @@ void VehicleCAN_Manager::txFrame(uint32_t id, const uint8_t *data) {
     /* MCP2515 KHÔNG tự thoát bus-off như bxCAN của STM32 (bên slave đã bật
      * AutoBusOff và phần cứng tự lo). Ở đây một chuỗi thất bại phải re-init bằng
      * tay, nếu không link lên xe chết cho tới khi tắt nguồn - âm thầm. */
-    if (++txFailRun >= VCAN_TX_FAIL_LIMIT) {
+    if (++txFailRun >= kVcanTxFailLimit) {
         Serial.println("[VCAN] TX tac -> re-init MCP2515");
         txFailRun = 0;
         init();
@@ -154,21 +154,21 @@ void VehicleCAN_Manager::update() {
     /* MỘT lần lấy snapshot cho cả hai frame: System_Get_Snapshot() khoá mutex,
      * gọi hai lần mỗi chu kỳ là khoá hai lần không cần thiết. Và nhờ vậy hai
      * frame mô tả CÙNG một thời điểm. */
-    BMS_Pack_State snaps[TOTAL_PACKS];
+    BMS_Pack_State snaps[kTotalPacks];
     System_Get_Snapshot(snaps);
 
     uint8_t data[8];
 
     buildStatus(snaps, data);
-    txFrame(VCAN_STATUS_ID, data);
+    txFrame(kVcanStatusId, data);
 
     buildPackDetail(snaps, data);
-    txFrame(VCAN_PACK_ID, data);
+    txFrame(kVcanPackId, data);
 }
 
 // --- FREE RTOS WRAPPER ---
 void Task_VehicleCAN_Run(void *pvParameters) {
-    VehicleCAN_Manager vcan(PIN_VCAN_CS);
+    VehicleCAN_Manager vcan(kPinVcanCs);
 
     if (!vcan.init()) {
         Serial.println("[VCAN] init failed -> delete task");
@@ -182,6 +182,6 @@ void Task_VehicleCAN_Run(void *pvParameters) {
     TickType_t last = xTaskGetTickCount();
     for (;;) {
         vcan.update();
-        vTaskDelayUntil(&last, pdMS_TO_TICKS(VCAN_PERIOD_MS));
+        vTaskDelayUntil(&last, pdMS_TO_TICKS(kVcanPeriodMs));
     }
 }

@@ -1,7 +1,7 @@
 #include "System_Data.h"
 
 // 1. Biến toàn cục thực tế
-BMS_Pack_State globalPacks[TOTAL_PACKS];
+BMS_Pack_State globalPacks[kTotalPacks];
 SemaphoreHandle_t dataMutex;
 QueueHandle_t canQueue;
 /* Khoi tao TRUE: relay LUON mo luc bat may. Nguoi van hanh phai chu dong bat
@@ -27,11 +27,11 @@ bool System_Get_SlavesActive(void)      { return s_webSlavesActive; }
 // 2. Khởi tạo
 void System_Data_Init() {
     dataMutex = xSemaphoreCreateMutex();
-    // [ĐÃ THAY ĐỔI: Thay số 20 cứng bằng Macro CAN_QUEUE_LENGTH]
-    canQueue = xQueueCreate(CAN_QUEUE_LENGTH, sizeof(BMS_Message_t));
+    // [ĐÃ THAY ĐỔI: Thay số 20 cứng bằng Macro kCanQueueLength]
+    canQueue = xQueueCreate(kCanQueueLength, sizeof(BMS_Message_t));
     
     // Xóa sạch dữ liệu ban đầu
-    for(int i=0; i<TOTAL_PACKS; i++) {
+    for(int i=0; i<kTotalPacks; i++) {
         globalPacks[i].voltage = 0;
         globalPacks[i].current = 0;
         globalPacks[i].soc = 0;
@@ -43,7 +43,7 @@ void System_Data_Init() {
 // --- HÀM GHI AN TOÀN (Dành cho Task Logic) ---
 void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp,
                         uint8_t status, uint8_t soc) {
-    int idx = can_id - CAN_BASE_ID;
+    int idx = can_id - kCanBaseId;
 
     /* Bounds check against the monitored count, not the array size: a slave
      * beyond the configured count is still physically on the bus and still
@@ -61,7 +61,7 @@ void System_Update_Pack(uint32_t can_id, float voltage, int8_t temp,
 }
 
 uint8_t System_GetPackCount(void) {
-    return TOTAL_PACKS;      /* runtime-configurable from the web UI later */
+    return kTotalPacks;      /* runtime-configurable from the web UI later */
 }
 
 float System_TotalVoltage(const BMS_Pack_State *snaps) {
@@ -91,7 +91,7 @@ int System_MinSoc(const BMS_Pack_State *snaps) {
 
 void System_Update_Current(float current) {
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
-        for(int i=0; i<TOTAL_PACKS; i++) {
+        for(int i=0; i<kTotalPacks; i++) {
             globalPacks[i].current = current;
         }
         xSemaphoreGive(dataMutex);
@@ -117,10 +117,10 @@ float System_Get_Current(void) {
 // --- HÀM ĐỌC AN TOÀN (Dành cho Task Hiển thị) ---
 void System_Get_Snapshot(BMS_Pack_State *snapshotArray) {
     if (xSemaphoreTake(dataMutex, 100) == pdTRUE) {
-        for(int i = 0; i < TOTAL_PACKS; i++) {
+        for(int i = 0; i < kTotalPacks; i++) {
             // Tự động tính trạng thái Online ngay tại lõi
             bool isOnline = (globalPacks[i].lastUpdate > 0) && 
-                            (millis() - globalPacks[i].lastUpdate < SLAVE_TIMEOUT_MS);
+                            (millis() - globalPacks[i].lastUpdate < kSlaveTimeoutMs);
             globalPacks[i].isConnected = isOnline;
             
             // Copy ra bản nháp cho các Task khác dùng

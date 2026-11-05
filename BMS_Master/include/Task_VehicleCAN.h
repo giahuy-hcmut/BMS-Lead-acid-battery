@@ -14,7 +14,7 @@
 // Cả hai frame mang ĐÚNG tập dữ liệu mà web dashboard đang hiện, nên hai đường
 // ra kiểm chéo nhau được bằng mắt.
 //
-// ---- VCAN_STATUS_ID (0x200) · DLC 8 · chu kỳ VCAN_PERIOD_MS ----
+// ---- kVcanStatusId (0x200) · DLC 8 · chu kỳ kVcanPeriodMs ----
 //   byte 0-1  Tổng áp các bình ONLINE   uint16  0.01 V
 //   byte 2-3  Dòng pack                 int16   0.01 A   (>0 = xả)
 //                                       VCAN_CURRENT_INVALID nếu mất cảm biến
@@ -23,7 +23,7 @@
 //   byte 6    Cờ lỗi                    uint8   bitmask VCAN_FLAG_*
 //   byte 7    Bộ đếm sống               uint8   tăng mỗi frame, quay vòng
 //
-// ---- VCAN_PACK_ID (0x201) · DLC 8 · GHÉP KÊNH, mỗi chu kỳ một bình ----
+// ---- kVcanPackId (0x201) · DLC 8 · GHÉP KÊNH, mỗi chu kỳ một bình ----
 //   byte 0    Chỉ số bình (bộ chọn)     uint8   0..count-1
 //   byte 1-2  Áp bình                   uint16  0.01 V
 //   byte 3    SOC bình (Kalman/slave)   uint8   1 %      VCAN_SOC_INVALID
