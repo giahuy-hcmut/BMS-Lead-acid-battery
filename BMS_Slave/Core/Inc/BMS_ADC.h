@@ -91,9 +91,9 @@ void BMS_ADC_Init(ADC_HandleTypeDef *hadc);
  * @note   Blocking: averages ADC_NUM_SAMPLES conversions, about 0.7 ms in
  *         total at a 12 MHz ADC clock with a 71.5-cycle sample time.
  * @return Terminal voltage in volts, or 0.0f when BMS_ADC_Init() was never
- *         called. 0.0f is below the under-voltage threshold on purpose, so
- *         an uninitialised driver raises a fault instead of reporting a
- *         plausible value.
+ *         called or when not a single conversion completed. 0.0f is below the
+ *         under-voltage threshold on purpose, so a broken driver raises a
+ *         fault instead of reporting a plausible value.
  */
 float BMS_ADC_GetVoltage(void);
 

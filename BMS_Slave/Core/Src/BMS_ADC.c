@@ -71,11 +71,12 @@ void BMS_ADC_Init(ADC_HandleTypeDef *hadc)
 /**
  * @brief  Measure the battery terminal voltage, calibration applied.
  * @return Terminal voltage in volts, or 0.0f when the driver was never
- *         initialised.
+ *         initialised or no conversion completed.
  */
 float BMS_ADC_GetVoltage(void)
 {
     uint32_t adc_sum = 0U;
+    uint32_t valid   = 0U;
     uint32_t i;
     float    adc_avg;
     float    v_pin;
@@ -97,11 +98,28 @@ float BMS_ADC_GetVoltage(void)
         if (HAL_ADC_PollForConversion(s_hadc, ADC_POLL_TIMEOUT_MS) == HAL_OK)
         {
             adc_sum += HAL_ADC_GetValue(s_hadc);
+            valid++;
         }
         HAL_ADC_Stop(s_hadc);
     }
 
-    adc_avg = (float)adc_sum / (float)ADC_NUM_SAMPLES;
+    /* Divide by the samples that actually converted, not by the number
+     * requested. A timed-out conversion contributes nothing to adc_sum, so
+     * dividing by ADC_NUM_SAMPLES counted it as 0 V: losing 10 of 100 samples
+     * silently reported 10% less voltage, with no fault bit raised, and a low
+     * reading is exactly what makes the under-voltage protection trip. */
+    if (valid == 0U)
+    {
+        /* Nothing converted at all. Report 0.0f, the same contract this
+         * driver already uses for an uninitialised handle: 0 V sits below
+         * THRESHOLD_UNDER_VOLT, so the master sees a faulty slave instead of
+         * a plausible number. */
+        g_dbg_adc_avg    = 0.0f;
+        g_dbg_v_computed = 0.0f;
+        return 0.0f;
+    }
+
+    adc_avg = (float)adc_sum / (float)valid;
     v_pin   = (adc_avg / ADC_RESOLUTION) * ADC_VREF;
     v_comp  = v_pin * ((ADC_R1_VAL + ADC_R2_VAL) / ADC_R2_VAL);
 
