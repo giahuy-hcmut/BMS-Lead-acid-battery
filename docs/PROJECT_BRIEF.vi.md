@@ -24,10 +24,16 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   hạ 5ms) — KHÔNG dùng FreeRTOS (RAM 20KB quá chật; Kalman chỉ ~21µs).
 - CAN 500kbps. Slave ID 0x103–0x107 (master map idx = id − 0x103,
   TOTAL_PACKS=5). Slave gửi frame: byte0-1 áp×100, byte2-3 dòng×100,
-  byte4 SOC, byte5 nhiệt+40, byte6 cờ lỗi; chu kỳ 1000ms.
+  byte4 SOC, byte5 nhiệt+40, byte6 cờ lỗi, **byte7 DỰ PHÒNG**; chu kỳ 1000ms.
 - **ĐÃ CODE + ĐÃ VERIFY TRÊN PHẦN CỨNG (2026-08-06):** master phát dòng qua
   frame **0x100** (gộp luôn vai trò heartbeat — slave thức khi nhận 0x100),
-  chu kỳ **5ms/200Hz**, `DLC=2`. Không còn heartbeat riêng.
+  chu kỳ **5ms/200Hz**, **`DLC=8`** (byte0-1 dòng, **byte2-7 DỰ PHÒNG = 0x00**).
+  ⚠️ **DLC = 8 cho CẢ HAI chiều** (chốt 2026-09-18, trước đó 0x100 dùng DLC=2).
+  Quy ước J1939: khung cỡ CỐ ĐỊNH ⇒ thêm field sau này chỉ là điền vào byte dự
+  phòng, không phải đổi DLC — đổi DLC là phá mọi bên nhận đang kiểm nó.
+  Giá: 0x100 từ 75 → 135 bit (đã tính bit stuffing xấu nhất) = 150 → 270 µs
+  @500kbps ⇒ tải bus **3.0% → 5.4%**, blocking time node khác +120 µs.
+  Byte dự phòng **PHẢI giữ 0x00**; định nghĩa field mới thì sửa ở đây TRƯỚC.
   Quy ước payload CHỐT cho **cả hai chiều**: **`int16` bù 2, MSB trước,
   đơn vị A×100** — giống byte 2-3 của frame slave. Master clamp ±320A
   trước khi scale (int16 tối đa ±327.67A, tràn sẽ đảo dấu).
@@ -38,8 +44,9 @@ Giao tiếp với người dùng bằng TIẾNG VIỆT; code/comment/tài liệu
   innovation 0.34mV (chứng minh cả chuỗi encode→bus→ISR→kho→R0 bù nhiệt→OCV).
 - Hiện trạng firmware slave: **KHÔNG CÒN STUB NÀO**.
   - Áp: BMS_ADC.c đọc ADC thật (100 mẫu) + cầu phân áp 33k/9.1k +
-    calib 2 điểm. **Chỉ SLAVE_INDEX=0 đã đo** (K=0.971, B=0.470);
-    slave 1-4 vẫn K=1/B=0 → PHẢI đo VOM và điền.
+    calib 2 điểm. **SLAVE_INDEX 0-2 đã đo** (số thật trong `BMS_ADC.h`; idx 2
+    lệch hẳn khỏi nhóm, nghi đo sai — xem mục "Còn lại theo mức"). Slave 3-4
+    vẫn K=1/B=0 → PHẢI đo VOM và điền.
   - Nhiệt: DS18B20 đọc thật. Biên timing khe đọc bit đã nới
     (`delay_us(10)`→`5`, lấy mẫu ~7µs thay vì ~12µs trong cửa sổ 15µs) vì
     ISR CAN ~4µs sẽ chen vào khi master phát 200Hz.
@@ -399,11 +406,15 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 ### ✅ Tách task + đóng gói cờ (master, 2026-08-13)
 
 - **`Task_Logic` tách đôi:** `Task_Ingest` (event-driven, block `xQueueReceive`
-  → `System_Update_Pack`) lo NHẬP kho; `Task_Logic` giờ CHỈ giám sát an toàn,
-  quét mỗi `PROTECTION_PERIOD_MS`=10ms bằng `vTaskDelay` (bỏ kiểu ăn ké timeout
-  queue). Producer/consumer của kho tách rời; mất slave vẫn phát hiện qua
-  timestamp trong kho, độc lập queue. Lý do KHÔNG "đọc liên tục": busy-loop đốt
-  100% CPU + không nhanh hơn tốc độ nguồn (dòng đổi 5ms).
+  → `System_Update_Pack`) lo NHẬP kho; `Task_Logic` giờ CHỈ giám sát an toàn.
+- **Tách `Task_CAN` (mới):** Chia `Task_CAN` cũ thành hai luồng độc lập: `Task_CAN_Rx` 
+  (event-driven, chặn 100% bằng `portMAX_DELAY`) và `Task_CAN_Tx` (định kỳ). 
+  Chấm dứt xung đột giữa việc chờ nhận ngắt và gửi chu kỳ đúng 5ms.
+- **Thời gian thực tuyệt đối (mới):** Các luồng định kỳ (`Task_CAN_Tx`, `Task_Logic`, 
+  `Task_Current`) đã đổi từ `vTaskDelay` sang `vTaskDelayUntil` để khóa chặt nhịp, 
+  không còn trôi dạt (jitter).
+- **Giao diện Web nâng cấp (mới):** Dashboard nâng lên thiết kế Grid 2 cột trên Desktop 
+  nhằm tối ưu không gian hiển thị, giữ nguyên 1 cột trên điện thoại.
 - **Cờ web đóng gói:** `webForceRelayOff`/`webSlavesActive` bỏ `extern`, chuyển
   `static` trong System_Data.cpp + `System_Set/Get_RelayOverride` /
   `System_Set/Get_SlavesActive` (bool atomic 32-bit → không mutex). Đúng luật
@@ -415,6 +426,38 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
   tốn RAM 20KB + mutex khắp nơi. Giới hạn thật của slave = latency xấu nhất
   ~5ms do DS18B20 blocking (1-wire) — cần thì làm non-blocking, không thay RTOS.
 
+### ✅ Relay do NGƯỜI VẬN HÀNH đóng + hiện MỌI lỗi (master, 2026-09-17)
+
+Trước: mở web lên là relay **đã đóng sẵn** — logic "đủ điều kiện thì tự đóng".
+Sai cả về an toàn lẫn ý đồ vận hành: máy không được tự cấp điện cho xe.
+
+- `s_webForceRelayOff` khởi tạo **`true`** (`System_Data.cpp`) ⇒ boot xong relay
+  **LUÔN MỞ**. Người vận hành phải bấm ON trên web thì hệ mới cấp điện.
+- Bấm ON **không** đồng nghĩa đóng relay: vẫn phải qua hysteresis
+  `sysSoc >= RECOVERY_SOC` (10%) ⇒ **SOC < 10% thì bấm ON cũng không đóng**.
+  `sysSoc == −1` (còn bình offline) cũng bị chặn ở đây — đúng ý đồ.
+- **Gom mọi lỗi thay vì chỉ lỗi đầu tiên.** Trước kia `evaluateProtection()`
+  `break` ngay lỗi đầu ⇒ mất cả I2C lẫn CAN mà web chỉ hiện I2C.
+  Giờ `addReason()` nối chuỗi bằng `" | "`, `faultReason` nới **128 byte**, và
+  bình hỏng được gọi **đích danh**: `Lost:0x105 | HwErr:0x107 | Operator OFF`.
+- `lockSystem()` cập nhật `faultReason` **mỗi lần gọi** (danh sách lỗi đổi theo
+  thời gian) nhưng chỉ `Serial.printf` khi **chuyển trạng thái** ⇒ không spam.
+
+### ✅ Công cụ đo sai số: `CSV_LOG` (master, 2026-09-17)
+
+`//#define CSV_LOG` trong `Config.h` — bỏ comment để lấy số liệu, comment lại sau:
+- `Task_Terminal` xuất **CSV 1 dòng/giây** thay bảng dashboard; tên cột sinh từ
+  `CAN_BASE_ID` (`v_103..v_107`, `s_103..s_107`) nên không thể ghi nhầm slave.
+- `Task_VehicleCAN` **không được tạo** trong `main.cpp` — nó in `[VCAN] TX tac`
+  ~4 dòng/giây khi chưa nối node xe, làm bẩn file. Đo áp không cần bus xe.
+- `platformio.ini` có `monitor_filters = log2file` ⇒ mở Serial Monitor là tự ghi
+  ra `logs/` (đã gitignore). Cần thiết vì 80 phút đo ≈ 4800 dòng, vượt xa
+  scrollback mặc định 1000 dòng của VS Code.
+- ⚠️ **Bấm RESET sau khi mở monitor**, nếu không sẽ mất dòng header. Và phải
+  **nhìn số có nhấp nhô thật không** trước khi đo — lần đầu thu được 218 giây
+  giá trị đứng im vì master không nhận frame, kho trả dữ liệu cũ.
+
+
 ### Còn lại theo mức
 
 - ✅ ~~Hằng số dòng điện neo SAI cảm biến~~ — **XONG 2026-08-12.** Hall đã xoá
@@ -425,10 +468,20 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
   Sai dấu làm `(packI > MAX_DISCHARGE_CURRENT)` luôn sai ⇒ **bảo vệ quá dòng
   tắt hoàn toàn**. Bù lại lỗi rất ồn ào (SOC tăng khi đang chạy) nên không
   trốn được lâu — nhưng phải nằm trong checklist, không để trôi.
-- 🔴 **Calib `CALIB_K/B` cho slave 1-4** (chỉ SLAVE_INDEX=0 đã đo).
-- 🟠 **9b**: under-volt bù `I·R0`. Ngưỡng 10.5V là số LÚC NGHỈ; ở 100A sụt
-  `I·R = 1.35V` nên bình đang nghỉ 11.85V sẽ đọc 10.5V dưới tải → **ngắt
-  oan ở ~17% SOC**. Sửa: so `V + I·R0`. Đã có dòng nên làm được.
+- ✅ ~~Nạp firmware mới cho slave 2-4~~ — **XONG 2026-09.** Cả 5 board đã chạy bản
+  mới (đo áp thật + Kalman SOC). `System_MinSoc` không còn bị ghim 0.
+- 🟠 **Calib `CALIB_K/B` còn thiếu slave 3 & 4** (`SLAVE_INDEX=3/4`, CAN `0x106`/
+  `0x107`) — vẫn `K=1.0, B=0.0` tức **chưa calib**. Đo được: 0x107 báo 11.90 V
+  trong khi VOM 11.85 V ⇒ lệch +50 mV, vẫn lọt ±5% nhưng nên calib cho đẹp.
+  ⚠️ Comment trong `BMS_ADC.h` **lỗi thời**: idx 1 và 2 vẫn ghi `// TODO đo` dù đã
+  có số. Riêng idx 2 (`K=1.05428, B=-0.742`) lệch hẳn khỏi nhóm (các con kia
+  0.98–0.99) ⇒ **nghi đo sai, phải đo lại** trước khi đưa vào báo cáo.
+- 🔴 **Slave 0x103 nhiễu ±150 mV đỉnh-đỉnh** trong khi 4 con kia chỉ ±5–10 mV
+  (gấp ~29 lần) ⇒ **lỗi phần cứng** (giắc lỏng / mối hàn nguội), không phải
+  firmware. Đã dùng 0x107 làm con đại diện để lấy số liệu.
+- ✅ ~~under-volt bù I·R0.~~ **(XONG Đợt 4/2026)**: Ngưỡng 10.5V đã được nâng cấp để bù 
+  điện áp rơi (IR drop) khi có dòng xả `comp = snap.current_a * KF_R0_NOM` tại 
+  `Task_Voltage.c`, giải quyết triệt để lỗi ngắt oan dưới tải.
 - 🟡 **Auto-zero cảm biến dòng lúc nghỉ** — *tụt từ 🟠 xuống 🟡.* Hall trôi
   offset 0.125A → 0.875A theo nhiệt nên auto-zero là bắt buộc; INA219 đo được
   trôi ~8mA trên 60°C, và `CURRENT_ZERO_MV` đã đo tĩnh. Vẫn nên có để bù nhiệt
@@ -454,9 +507,15 @@ là timeout CAN và `System_Data.cpp` mới là chỗ dùng chính.
 - 🟡 Mạng: `AutoRetransmission=DISABLE` (one-shot, mất frame khi thua
   arbitration — master ID 0x100 < slave nên master luôn thắng); không kiểm
   return `BMS_CAN_Transmit`; thứ tự `HAL_CAN_Start` trước `ConfigFilter`.
-  **Đã hoãn.** — ✅ Filter nhận MỌI ID → **ĐÃ SỬA 2026-08-13**: mask hẹp về đúng
+  **Đã hoãn.** 
+  — ✅ **Filter nhận MỌI ID → ĐÃ SỬA 2026-08-13**: mask hẹp về đúng
   `0x100` (`FilterIdHigh=0x100<<5`, `FilterMaskIdHigh=0x7FF<<5`), nên frame slave
   anh em không sinh ngắt RX đánh thức WFI → slave mới ngủ được.
+  — ✅ **AutoBusOff → BẬT LẠI 2026-09-16** (commit `1f66ff2`). CubeMX sinh lại
+  `MX_CAN_Init` với ABOM tắt. Slave **không có một dòng nào** xử lý bus-off bằng
+  phần mềm ⇒ tắt ABOM là để node chết vĩnh viễn tới khi rút điện. Bật ⇒ phần cứng
+  tự phục hồi sau 128×11 bit recessive (~2.8 ms @500 kbps).
+  ⚠️ Dòng này nằm NGOÀI `USER CODE` ⇒ **sửa trong `.ioc`**, không thì mất lần sau.
 - 🟡 Byte 7 frame slave còn trống — chở được `SCH_GetOverrunCount()`.
 - 🟡 GĐ8 bench: HPPC (R0/R1/C1 theo SOC), xả tham chiếu, đo variance nhiễu
   ADC thật (thay KF_R_MEAS), xác nhận OCV đầy/cạn.
@@ -473,7 +532,7 @@ bị phá. Nghĩa là **với bình này, regen gần như không dùng được
 Cách ĐÚNG để chặn: gửi frame "giới hạn dòng sạc cho phép" lên CAN xe để xe tự
 giới hạn — **chưa làm** vì chưa có xe nào đọc.
 
-## 6b. CAN XE — MCP2515 qua SPI (xong firmware 2026-08-11)
+## 6b. CAN XE — MCP2515 qua SPI (firmware 2026-08-11 · **ĐÃ VERIFY THẬT 2026-08-14**)
 
 **Vì sao cần chip ngoài:** ESP32 chỉ có **MỘT** bộ TWAI và nó đã cõng bus nội bộ
 master↔slave. Bus xe là mạng thứ hai ⇒ bắt buộc controller CAN thứ hai.
@@ -528,20 +587,22 @@ Nguyên tắc bố trí: **mỗi task một cụm chân liền nhau**.
 
 | Chân | Dùng | Task |
 |---|---|---|
-| `16` TX · `17` RX | TWAI — bus **nội bộ** ↔ slave | Task_CAN |
-| `5` CS · `18` SCK · `19` MISO · `23` MOSI | SPI — bus **xe** qua MCP2515 | Task_VehicleCAN |
-| `22` | `INT` của MCP2515 — **khai chỗ, CHƯA nối** | Task_VehicleCAN |
-| `26` | Relay tổng | Task_Logic |
-| `32` | ADC dòng — **phải là ADC1**, ADC2 không dùng được khi WiFi bật | Task_Current |
-| `21` · `4` · `25` · `27` · `33-35` | **trống** | |
+| `32` TX · `35` RX | TWAI — bus **nội bộ** ↔ slave | Task_CAN_Rx / Task_CAN_Tx |
+| `27` SCK · `26` MOSI · `25` MISO · `33` CS | SPI — bus **xe** qua MCP2515 | Task_VehicleCAN |
+| `14` | `INT` của MCP2515 — **khai chỗ, CHƯA nối** (chỉ GỬI) | Task_VehicleCAN |
+| `23` | Relay tổng | Task_Logic |
+| `21` SDA · `22` SCL | I2C → **INA219** (cảm biến dòng) | Task_Current |
 
-Dùng **chân VSPI mặc định** nên KHÔNG phải gọi `SPI.begin()` với chân tuỳ chọn —
-bớt một chỗ sai, và khớp mọi ví dụ của thư viện.
+⚠️ **ĐỔI TOÀN BỘ ngày 2026-08-14 (commit `4989d34`) để tối ưu đi dây PCB** — chạy
+mạch thẳng, không cắt nhau. Pinout cũ (`16/17` TWAI, `5/18/19/23` VSPI, `26`
+relay) **KHÔNG còn đúng**.
 
-`INT` đặt ở **22** (vừa giải phóng từ I2C) chứ không phải GPIO 4: trên header
-DevKit v1, chân 4 nằm ngay dưới 16/17 của TWAI ⇒ chân của **hai bus CAN khác
-nhau** sẽ nằm xen kẽ, dễ cắm lẫn khi có 5 slave + 1 bus xe cùng lúc. Ở 22 thì
-toàn bộ cụm CAN xe nằm gọn trong vùng `5…23`, TWAI ở ngay dưới.
+Hệ quả: SPI **không còn là chân VSPI mặc định** nên `Task_VehicleCAN::init()`
+**BẮT BUỘC** gọi `SPI.begin(PIN_VCAN_SCK, PIN_VCAN_MISO, PIN_VCAN_MOSI, -1)`.
+Quên là MCP2515 im lặng hoàn toàn — thư viện sẽ dùng 18/19/23 mặc định.
+
+`35` chỉ vào được (input-only) — hợp với vai RX. `32` từng là chân ADC của ACS758,
+giải phóng khi chuyển sang INA219 (I2C).
 
 ### Module HW-184 — ba cái bẫy
 
@@ -568,9 +629,57 @@ bounds check chặn; slave chỉ xét `StdId == 0x100` → bỏ qua. Không ai b
 Chỉ cần **RX**, không cần TX: transceiver dội TX lên RX (cơ chế bit-monitoring)
 nên RX thấy toàn bộ traffic trên bus.
 
+### ✅ ĐÃ VERIFY BẰNG NODE NHẬN THẬT (2026-08-14)
+
+Dựng **node "xe" giả lập**: ESP32 thứ 2 + **MCP2551** (ESP32 có TWAI tích hợp nên
+chỉ cần transceiver). Nạp `Code/VCAN_RX_TEST/` → **nhận + giải mã đúng cả hai
+frame**. Byte thô kiểm chéo tay khớp 100%:
+
+```
+ID 0x200: 18 83 00 00 00 04 20 14
+  -> 0x1883=6275 => 62.75V · I=0 · SOC=0 · state=4 FAULT · flags=0x20 RELAY_OPEN · cnt=20
+ID 0x201: 00 04 D3 3A 1F 00 01 05
+  -> pack 0 · 0x04D3=1235 => 12.35V · SOC=0x3A=58% (Kalman THẬT của slave) · T=31C · n=5
+```
+`alive_counter` tăng liên tục 20→25 ⇒ BMS không treo. Cùng lúc master **HẾT in
+`[VCAN] TX tac`**.
+
+**⚠️ Bài học quan trọng: CAN cần ≥ 2 NODE.** MCP2515 gửi frame phải có node khác
+**ACK** mới coi là gửi xong. Một mình MCP2515 trên bus (chưa có xe) ⇒ `sendMsgBuf`
+FAIL ⇒ `[VCAN] TX tac -> re-init` lặp mãi. Đây **KHÔNG phải lỗi chip** — chỉ là
+chưa ai nghe. Chuỗi chẩn đoán khi bus im, theo thứ tự:
+1. `[VCAN] MCP2515 ready` có in? (không → SPI/nguồn) rồi `TX tac` có lặp? (có →
+   lỗi DÂY/BAUD, không phải SPI).
+2. **Rs (pin 8) của MCP2551 → GND** — hở là transceiver vào standby, KHÔNG thu/ACK.
+   Nghi phạm số 1.
+3. **GND CHUNG** giữa hai board. 4. CANH↔CANH / CANL↔CANL không tráo.
+5. **120 Ω × 2** ở hai đầu. 6. Thạch anh MCP2515 phải đúng 8 MHz như code khai.
+
+Cách cũ (mượn bus nội bộ + soi GPIO17 bằng LA) vẫn đúng nhưng **không cần nữa** —
+node nhận thật vừa chứng minh được vừa tạo ACK.
+
+### 📦 File BÀN GIAO cho người điều khiển motor
+
+`VCAN_RX_TEST/include/BMS_VehicleCAN.h` — **decoder header-only**, đưa cho đồng
+đội (anh ta dùng ESP32 điều khiển driver BLDC qua CAN, đồng thời nhận gói BMS).
+
+- API nhận **`(id, data, len)` THÔ**, không buộc kiểu `twai_message_t` ⇒ dùng được
+  với TWAI tích hợp HAY MCP2515/mcp_can — không ép anh ta theo stack của ta.
+- `BmsVcan_DecodeStatus(id,data,len,&st)` → `BmsStatus`; `BmsVcan_DecodePack(...)`
+  → `BmsPack`. Trả `false` nếu id/len không khớp ⇒ gọi vô tư mọi frame.
+- **Ranh giới:** ta lo **GIẢI MÃ**, anh ta lo **NHẬN CAN** (đã có sẵn cho motor).
+  File `.h` KHÔNG init CAN, KHÔNG có vòng nhận ⇒ include một mình KHÔNG chạy được.
+  `src/main.cpp` của ta là ví dụ ĐẦY ĐỦ (init + nhận + giải + in) dùng để TEST.
+- Đóng gói: giấu **protocol** (offset byte, scale ×0.01, MSB-first, sentinel
+  `0xFF`/`0x80`/`-32768`) — đổi protocol chỉ sửa 1 file, code motor không đổi.
+  KHÔNG giấu code (header-only, struct phơi field) — đánh đổi CÓ CHỦ ĐÍCH: struct
+  là DTO thuần, và "copy 1 file" quan trọng hơn với người không muốn tự code.
+- README có: checklist setup · bảng API→biến→thông số · ví dụ **FreeRTOS** (task
+  nhận+giải ghi kho có mutex, task motor đọc kho).
+
 ### Chưa làm, cố ý
 
-- **Nhận frame từ xe** — `PIN_VCAN_INT` (GPIO 22) khai chỗ nhưng **không nối,
+- **Nhận frame từ xe** — `PIN_VCAN_INT` (GPIO 4) khai chỗ nhưng **không nối,
   không dùng**. Chưa biết xe có gửi gì.
 - **Frame giới hạn dòng sạc/xả** — chưa ai đọc.
 - Bit "lệch SOC" — xe tự tính được từ `0x201`, không cần bit riêng.
@@ -699,6 +808,187 @@ INA219 **không có chân ALE** nên đường mềm này là lớp DUY NHẤT. 
 ±81.92mV ⇒ chỉ **109A** trên shunt này, dưới cả đỉnh tăng tốc 100A. Đó là lý do
 chọn INA219: **nó có PGA**, INA226 thì không.
 
+## 6e. SỰ CỐ PHẦN CỨNG — ESP32 CHẾT VÌ RÚT GIẮC NÓNG (2026-09-07)
+
+**Diễn biến:** PCB master + slave in xong, chạy tốt. Sau vài lần bật/tắt, web báo
+mất I2C. Rơ giắc INA219 thấy lúc nhận lúc không ⇒ nghi lỏng giắc ⇒ **rút/cắm giắc
+nhiều lần TRONG LÚC MẠCH ĐANG CÓ ĐIỆN** ⇒ ESP32 nóng dữ dội rồi hỏng.
+
+### Nguyên nhân: LATCH-UP, không phải quá áp từ pack
+
+Giả thuyết đầu tiên (dòng công suất chui qua dây sense vào ESP32) **SAI, đã bác
+bỏ bằng số**: để diode bảo vệ của INA219 dẫn thì `IN+` phải vượt `VCC+0.7V ≈ 4V`,
+trong khi shunt 0.75 mΩ ở 100 A chỉ tạo **75 mV** — muốn 4 V cần **5.333 A**.
+Dây sense **không bao giờ** thành đường về.
+
+**Cơ chế đúng — latch-up:** mọi chip CMOS có **thyristor ký sinh (SCR)** từ các
+lớp p-n-p-n. Ép một chân vượt `VDD+0.5V` hoặc dưới `GND−0.5V` với dòng bơm đủ lớn
+⇒ SCR **kích và TỰ GIỮ** ⇒ bên trong chip xuất hiện **đường trở kháng thấp nối
+thẳng VDD xuống GND**. Buck 5 V (cấp nổi vài A) dồn dòng vào vài chục µm² silicon
+⇒ nóng ⇒ chết.
+
+**Rút/cắm nóng kích nó thế nào:** giắc rẻ không có chân GND chạm-trước/hở-sau nên
+thứ tự tiếp xúc ngẫu nhiên · nảy tiếp điểm hàng chục lần mỗi lần cắm · điện cảm
+dây + tụ trên module sinh `V = L·di/dt` vọt lố quá VDD hoặc âm hơn GND · **không
+có điện trở nối tiếp trên SDA/SCL** nên xung dội thẳng vào GPIO, dòng bơm không
+bị hạn chế. Rút-cắm nhiều lần = hàng trăm cơ hội kích.
+
+**Năng lượng giết chip đến từ nguồn 5 V của CHÍNH mạch**, không phải từ 60 V.
+
+### Cách kiểm chứng
+Đo trở **3V3 ↔ GND** của con ESP32 hỏng: **~0–50 Ω ⇒ xác nhận latch-up** (SCR đã
+chập VDD-GND). Vài trăm kΩ trở lên ⇒ hỏng kiểu khác.
+
+### Phòng ngừa — xếp theo hiệu quả
+1. **KHÔNG rút/cắm giắc khi mạch có điện.** Luật cứng. Tắt nguồn, chờ tụ xả.
+2. **Điện trở nối tiếp 100 Ω–1 kΩ trên SDA/SCL** — biện pháp CHUẨN chống
+   latch-up/EOS: giới hạn dòng bơm vào GPIO. I2C 100–400 kHz vẫn chạy tốt.
+3. Tụ lọc tốt sát chân VCC module INA (100 nF + 10 µF).
+4. Giắc có chân GND dài hơn (chạm trước – hở sau).
+
+**KHÔNG cần:** cầu chì dây sense và cách ly ISO1540 — cả hai **không liên quan**
+cơ chế này (đã cân nhắc rồi loại).
+
+### Cảnh báo còn hiệu lực về việc mất cách ly
+Shunt low-side khiến GND của ESP32 nằm trong đường công suất. Rủi ro **thật** là
+**vòng đất qua cáp USB** khi debug: laptop cắm sạc có nối đất + bộ nguồn bàn cũng
+nối đất ⇒ dòng chạy qua vỏ cáp USB. Khắc phục: **cho laptop chạy pin**. Còn dây
+sense thì an toàn (xem tính toán ở trên).
+
+⚠️ **Hai nguồn 5 V song song:** USB laptop và buck 60V→5V cùng cấp vào rail 5 V.
+Nguồn cao hơn đẩy ngược vào ngõ ra nguồn thấp hơn; buck không hút được dòng ngược
+⇒ có thể tắt bảo vệ / hỏng. **Quy trình an toàn: tắt 60 V → cắm USB nạp code →
+rút USB → bật lại 60 V.** Kiểm board: đo trở giữa chân `5V` và `VIN` — ~0 Ω nghĩa
+là KHÔNG có diode chặn, tuyệt đối không cấp hai nguồn cùng lúc.
+
+## 6f. KIỂM CHỨNG SAI SỐ < 5% (đang làm)
+
+### Bước 0 — phải chốt định nghĩa "5%" trước khi đo
+| Đại lượng | Định nghĩa | Ở 12 V / 30 °C |
+|---|---|---|
+| Điện áp | 5% của giá trị đọc | ±0.60 V |
+| Nhiệt độ | 5% của giá trị đọc | ±1.5 °C |
+| **SOC** | ⚠️ **±5 ĐIỂM phần trăm** (tuyệt đối), KHÔNG phải 5% tương đối | SOC thật 40% → nhận 35–45% |
+
+SOC bắt buộc dùng "điểm phần trăm": hiểu là 5% tương đối thì ở SOC 10% chỉ được
+sai 0.5 điểm — không BMS thương mại nào đạt. Chuẩn công nghiệp ghi "±3% SOC"
+nghĩa là ±3 **điểm**.
+
+**Quy tắc đo lường:** thiết bị chuẩn phải tốt hơn **4–10 lần** mức cần chứng minh.
+VOM ±0.5% là đủ cho mốc 5% — nhưng **phải ghi model + cấp chính xác của VOM**
+trong báo cáo.
+
+### Điện áp — công cụ đã có
+`CSV_LOG` trong `Config.h` (mặc định TẮT): Task_Terminal xuất CSV 1 dòng/giây thay
+cho bảng, tên cột sinh từ `CAN_BASE_ID` (`v_103..v_107`) nên không lệch được;
+banner bị chặn; **Task_VehicleCAN không được tạo** (nó in `[VCAN] TX tac` ~4
+dòng/giây khi chưa có node xe, làm bẩn file). `platformio.ini` có
+`monitor_filters = log2file` ⇒ bấm nút Serial Monitor là tự ghi file vào `logs/`
+(đã gitignore).
+
+⚠️ **Điểm kiểm phải KHÁC điểm calib** — kiểm lại đúng 2 mốc đã dùng để calib chỉ
+chứng minh "đường thẳng đi qua chính 2 điểm vẽ ra nó", vô nghĩa.
+
+⚠️ **Một mốc KHÔNG bao giờ lộ được sai số ĐỘ DỐC.** Không có nguồn bàn thì quét
+bằng cách **đấu MỘT slave lần lượt sang các bình khác nhau** (~10.8–12.0 V) và
+**cắm sạc** để lấy mốc cao (~13.8–14.4 V).
+
+⚠️ Dữ liệu qua CAN bị **lượng tử hoá 10 mV** (`uint16 ×0.01`), thô hơn ADC
+(3.73 mV/LSB). Đủ xa cho mốc ±600 mV, nhưng **không đo được σ thật** — muốn σ phải
+đọc `s_voltage_v` qua ST-Link Live Expressions.
+
+### Nhiệt độ
+⚠️ **Mức đặt máy lạnh KHÔNG phải chuẩn** — nó điều khiển theo cảm biến gió hồi của
+nó, chạy theo chu kỳ, sai ±1–2 °C. Dùng **nhiệt kế đặt sát cảm biến**, hoặc
+**nước đá đang tan = 0.0 °C** (chuẩn vật lý, miễn phí). DS18B20 cam kết **±0.5 °C**
+(−10…+85 °C) theo datasheet. Ở mốc 0 °C thì "5%" vô nghĩa ⇒ báo sai số tuyệt đối.
+
+🟡 CSV hiện **chưa có cột nhiệt độ** — master có sẵn `localPacks[i].temperature`,
+thêm 5 cột `t_103..t_107` là được (2 dòng trong `Task_Terminal.cpp`).
+
+### SOC — khó nhất, KHÔNG đo trực tiếp được
+| Bằng chứng | Tình trạng | Chứng minh được gì |
+|---|---|---|
+| 20 unit test, 100% coverage | ✅ đã có | code tính **đúng công thức** |
+| Mô phỏng ECE-15/DST + Monte Carlo (RMSE 0.28–0.44%) | ✅ đã có | đúng trên **pin mô phỏng** |
+| **Mốc OCV trên pin thật** | ✅ **đã có** | xem dưới |
+| Tính tay `ΔSOC = I·t/Q` | dễ, 10 phút | tích phân Coulomb đúng |
+| **Xả tham chiếu** | ❌ **CHƯA** | SOC đúng với **pin THẬT** |
+
+**Mốc OCV đo được 2026-09-17** (từ log `device-monitor-260917-175511`):
+slave 0x107 báo `v = 11.99 V`, `SOC = 29%`. Đảo đường OCV của chính filter:
+`(11.99 − 11.63)/1.26 = 28.6%` ⇒ **khớp**. Chứng minh bộ lọc **hội tụ đúng mô
+hình** và tích phân Coulomb **không trôi**.
+⚠️ Hạn chế phải ghi rõ: phép này dùng **chính đường OCV mà filter dùng** ⇒
+**bán-vòng-luẩn-quẩn**, KHÔNG kiểm được đường OCV có đúng với pin thật hay không.
+
+**Ý "tính tay Kalman rồi so với code" là VERIFICATION, không phải VALIDATION** —
+tính tay và code dùng cùng công thức nên luôn khớp, kể cả khi công thức sai so với
+pin thật. Việc đó **20 unit test đã làm tự động rồi**.
+
+Muốn chứng minh con số 5% thì **bắt buộc xả tham chiếu**: sạc đầy → nghỉ 4–24 h →
+xả đo dòng+thời gian bằng **thiết bị ĐỘC LẬP** (không dùng INA219 của hệ, sẽ vòng
+luẩn quẩn) → `Ah_total = ∫I dt` → `SOC_thật(t) = 1 − (∫₀ᵗ I dt / Ah_total)`.
+Xả C/20 mất ~20 h/bình. Đây là **GĐ8**.
+
+## 6g. CAN — NỀN TẢNG & TÀI LIỆU ÔN
+
+### Điều CAN KHÔNG làm (phải tự lo ở tầng ứng dụng)
+1. **ACK ≠ đúng người nhận.** ACK chỉ nói "CÓ AI ĐÓ nhận được". Master phát 0x100
+   cho 5 slave, chỉ cần 1 con sống là vẫn được ACK ⇒ **không thể dựa vào ACK để
+   biết slave còn sống** ⇒ phải có frame slave tự gửi + timeout (đã có).
+2. **Không có số thứ tự / timestamp** ⇒ không biết mất frame ⇒ phải tự thêm **bộ
+   đếm sống** (đã có ở byte 7 của `0x200`).
+3. **Không đảm bảo độ trễ** cho ID thấp ưu tiên khi bus tải cao ⇒ giữ tải thấp
+   (hiện ~4.3%).
+
+### Vì sao lệch pha 100 ms giữa 5 slave là BẮT BUỘC
+`AutoRetransmission = DISABLE` (one-shot): arbitration chọn người thắng nhưng
+**kẻ thua bị HUỶ frame, không gửi lại**. 5 slave bắn cùng lúc ⇒ 0x103 thắng mãi ⇒
+**0x104–0x107 chết đói có hệ thống**. Lệch pha cho mỗi con một cửa sổ riêng
+(khung 8 byte ≈ 222–270 µs, cửa sổ 100 ms ⇒ dư 450 lần).
+
+One-shot là **đánh đổi có chủ đích**: mất frame khi thua arbitration / lỗi bit,
+đổi lấy không kẹt mailbox và không phun error frame khi master vắng. Bù lại
+`SLAVE_TIMEOUT_MS = 3000` với chu kỳ 1000 ms cho **biên 2 frame mất liên tiếp**.
+🟡 Chưa đo được thực tế mất bao nhiêu frame — `BMS_CAN_Transmit` trả 0/1 mà
+**không ai đọc**; byte 7 của frame slave còn trống, chở được bộ đếm TX-fail.
+
+### Ưu tiên KHÔNG cắt ngang
+Arbitration chỉ xảy ra tại SOF. Khung đã bắt đầu thì bất khả xâm phạm — node ưu
+tiên cao phải **chờ tối đa 1 khung (~270 µs)**. Đây là *blocking time* trong công
+thức `WCRT = B + I + C`. Với master `0x100` (5 ms) ⇒ jitter 5.4%, không đáng kể.
+
+### 🔴 "Babbling idiot" — lỗ hổng chẩn đoán CHƯA vá
+Node ID thấp bị lỗi phát liên tục sẽ **thắng arbitration mãi** ⇒ 4 node kia chết
+đói ⇒ master báo `SLAVE_LOST` cho **4 con LÀNH**, còn con **thật sự hỏng** thì
+"đang gửi rất đều" ⇒ **chẩn đoán ngược hoàn toàn**. CAN không tự chống được: node
+babbling gửi khung **hợp lệ, được ACK** nên **TEC = 0**, không bao giờ bus-off.
+**Cách vá rẻ nhất:** đếm **tần suất theo từng ID** ở master — babbler có tần suất
+bất thường CAO trong khi các ID khác = 0. ~10 dòng, chưa làm.
+
+### Tài liệu tham khảo (link thật, đã kiểm)
+| Thứ tự đọc | Tài liệu | Dùng cho |
+|---|---|---|
+| 1 | [CSS Electronics — CAN Bus Simple Intro](https://www.csselectronics.com/pages/can-bus-simple-intro-tutorial) · [Ultimate Guide PDF 100 trang](https://www.csselectronics.com/pages/can-bus-ultimate-guide) | nhập môn, có hình |
+| 2 ⭐ | [ST RM0008 — chương bxCAN](https://www.st.com/resource/en/reference_manual/rm0008-stm32f101xx-stm32f102xx-stm32f103xx-stm32f105xx-and-stm32f107xx-advanced-armbased-32bit-mcus-stmicroelectronics.pdf) | **đúng chip slave**: ABOM, NART, filter bank, BTR |
+| 3 | [Bosch CAN Specification 2.0](http://esd.cs.ucr.edu/webres/can20.pdf) | chuẩn gốc — khung, 5 loại lỗi, TEC/REC, bus-off |
+| 4 ⭐ | [Davis, Burns, Bril, Lukkien (2007) — CAN schedulability: Refuted, revisited and revised](https://dl.acm.org/doi/abs/10.1007/s11241-007-9012-7) · [PDF](https://www.researchgate.net/publication/220414452_Controller_Area_Network_CAN_schedulability_analysis_Refuted_revisited_and_revised) | **WCRT / blocking time** — trích dẫn học thuật |
+| 5 | [Di Natale et al. — *Understanding and Using CAN*](https://link.springer.com/book/10.1007/978-1-4614-0314-2) (Springer 2012) | lý thuyết + thực hành |
+
+### Chu kỳ của BMS thương mại (số có nguồn)
+| Tầng | Thực tế công nghiệp | Hệ này |
+|---|---|---|
+| **ĐO** trong BMS | [LTC6811](https://www.analog.com/media/en/technical-documentation/data-sheets/LTC6811-1-6811-2.pdf): 12 cell trong **290 µs** | áp 50 ms (trung bình 100 mẫu ADC chống nhiễu; τ=R1C1≈25 s nên dư ~500×) |
+| **CAN xe** | [Orion BMS 2](https://www.orionbms.com/manuals/utility_o2/param_canbus_message_options.html): cấu hình **bước 8 ms**, ví dụ 80 ms | 100 ms |
+| **Hiển thị người** | [Victron VE.Direct](https://www.victronenergy.com/upload/documents/VE.Direct-Protocol-3.34.pdf): **1 giây** | web 500 ms |
+
+🟡 **Lệch tầng chưa sửa:** slave gửi frame **1000 ms** nhưng master đóng gói lên xe
+**100 ms** ⇒ `0x200/0x201` lặp lại **cùng một số 10 lần**. Đưa slave về 100 ms
+(+ lệch pha đổi `idx*100` → `idx*20`) sẽ khớp tầng. Tải bus sau đổi ~4.3%.
+**KHÔNG cần** đổi web 500 ms — đã nhanh gấp 2 chuẩn Victron.
+
+
 ## 7. QUY ƯỚC & NGUYÊN TẮC LÀM VIỆC VỚI NGƯỜI DÙNG NÀY
 
 - Tiếng Việt khi trao đổi; tiếng Anh trong code/file. Sơ đồ dùng Mermaid.
@@ -762,6 +1052,10 @@ chọn INA219: **nó có PGA**, INA226 thì không.
 - `BMS_Master/src/Task_Current.cpp` + `include/Task_Current.h` — CHỈ đo dòng
   (Coulomb cũ đã gỡ). INA219 qua I2C, lọc **cắt biên** 8 mẫu × 3 ms, phát hiện
   mất I2C → `currentSensorFault`. Xem mục 6d.
+- `VCAN_RX_TEST/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời + MCP2551) làm node
+  "xe" nhận `0x200`/`0x201`. `include/BMS_VehicleCAN.h` = **FILE BÀN GIAO** cho
+  người điều khiển motor (decoder header-only); `src/main.cpp` = app test;
+  `README.md` = đấu dây + API + ví dụ FreeRTOS. Đã verify chạy thật 2026-08-14.
 - `BENCH_INA219/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời) đã kiểm chứng cảm
   biến trước khi sửa master. Sinh ra mọi con số trong mục 6d. Giữ lại: nó là nơi
   duy nhất đo được thang đo và gain một cách độc lập.
@@ -774,10 +1068,11 @@ chọn INA219: **nó có PGA**, INA226 thì không.
   JSON có SOC RIÊNG từng bình, xử lý `soc = −1` thành `--`.
 - `BMS_Master/include/Config.h` — mục 6 = INA219 + shunt (**số đo thật** từ
   bench, kèm lý do low-side); mục 8 = chân/ID/chu kỳ CAN xe.
-- **Bản đồ chân ESP32 (sau 2026-08-12):** `16/17` TWAI nội bộ · `21/22` **I2C →
-  INA219** · `5` MCP2515 CS · `4` MCP2515 INT *(dời từ 22 vì GPIO 22 là SCL mặc
-  định và INA219 dùng thật)* · `18/19/23` VSPI · `26` relay · `32` **đã giải
-  phóng** (của ACS758 cũ).
+- **Bản đồ chân ESP32 (PCB thật, 2026-09):** `32` TX · `35` RX TWAI nội bộ ·
+  `27` SCK · `26` MOSI · `25` MISO · `33` CS (SPI → MCP2515) · `14` INT MCP2515
+  (**khai chỗ, CHƯA nối**) · `23` relay · `21` SDA · `22` SCL (I2C → INA219).
+  ⚠️ Bản đồ cũ (`16/17` TWAI, `5/18/19` VSPI, `26` relay, `4` INT) **KHÔNG còn
+  đúng** — đã đổi khi đi mạch PCB cho đường chạy thẳng. Xem bảng đầy đủ ở 6b.
 - Đã XOÁ: `Task_LCD.*` (master không dùng LCD), `BATTERY_CAPACITY_AH`,
   `VOLTAGE_SYS_*` (chết theo Coulomb counter), `PIN_CURRENT_SENSOR` +
   `ACS758_SENSITIVITY` / `ACS758_ZERO_VOLTAGE` / `ACS758_ZERO_CURRENT`
