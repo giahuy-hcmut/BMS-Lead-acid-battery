@@ -8,12 +8,17 @@
 #include "Task_WebServer.h" // <--- THÊM DÒNG NÀY
 #include "Task_Current.h"
 #include "Task_VehicleCAN.h"
+#include "Debug_Pins.h"
 
 void setup() {
     Serial.begin(115200);
 
     Serial.printf("\n\n>>> KÍCH THƯỚC GÓI TIN: %d Bytes <<<\n\n", sizeof(BMS_Telemetry_Packet));
     System_Data_Init();
+
+    /* Four GPIOs for logic-analyzer timing capture. Must run BEFORE any
+     * task is created, otherwise the first DBG_SET hits an unconfigured pin. */
+    DBG_Pins_Init();
 
     // --- CORE 1: NHIỆM VỤ SỐNG CÒN (REAL-TIME) ---
     // CAN tách đôi (Priority 5): Rx chặn trên ngắt (sự kiện), Tx chạy nhịp cố

@@ -1,5 +1,6 @@
 #include "Task_VehicleCAN.h"
 #include <SPI.h>
+#include "Debug_Pins.h"
 
 VehicleCAN_Manager::VehicleCAN_Manager(uint8_t csPin) : mcp(csPin) {
     isReady      = false;
@@ -181,7 +182,9 @@ void Task_VehicleCAN_Run(void *pvParameters) {
      * chạy thân task). */
     TickType_t last = xTaskGetTickCount();
     for (;;) {
+        DBG_SET(DBG_VCAN);
         vcan.update();
+        DBG_CLR(DBG_VCAN);
         vTaskDelayUntil(&last, pdMS_TO_TICKS(VCAN_PERIOD_MS));
     }
 }

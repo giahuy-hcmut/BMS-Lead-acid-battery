@@ -1,6 +1,8 @@
 #include "Task_Logic.h"
 #include "System_Data.h"
 #include <string.h>
+#include "Debug_Pins.h"
+
 
 Logic_Manager::Logic_Manager() {
     isSystemLocked = false; // Mặc định vừa bật máy là chưa khóa
@@ -11,6 +13,15 @@ void Logic_Manager::init() {
     pinMode(PIN_RELAY_CONTROL, OUTPUT);
     digitalWrite(PIN_RELAY_CONTROL, RELAY_OFF); // Luôn ngắt Relay lúc vừa khởi động để an toàn
     
+
+#ifdef FAULT_INJECT_TEST
+    /* INPUT_PULLUP so the rig is a single jumper wire: idle HIGH through the
+     * internal pull-up, touch the loose end to GND to inject a fault. GPIO 4
+     * has that pull-up; GPIO 34-39 would not. */
+    pinMode(PIN_FAULT_INJECT, INPUT_PULLUP);
+    Serial.println("[LOGIC] FAULT_INJECT_TEST on GPIO 4 - touch to GND to trip");
+#endif
+
     Serial.println("[LOGIC] Manager Initialized. Relay Configured.");
 }
 
@@ -54,6 +65,31 @@ void Logic_Manager::unlockSystem() {
 
 // BỘ NÃO ĐÁNH GIÁ AN TOÀN - gom TAT CA loi dang hoat dong, khong chi loi dau
 void Logic_Manager::evaluateProtection() {
+#ifdef FAULT_INJECT_TEST
+    /* TEST BUILD - the injection pin is the ONLY fault source.
+     *
+     * Every real check is bypassed on purpose: slave lost, slave hardware
+     * error, I2C loss, over-current, low SOC, operator override. The board can
+     * then be measured bare on the bench - no slaves on the bus, no INA219, no
+     * web interaction - because none of those can hold the relay open.
+     *
+     * HIGH = healthy -> relay driven ON.   LOW = fault -> relay driven OFF.
+     *
+     * lockSystem()/unlockSystem() are the production functions, and
+     * lockSystem() writes the relay pin on its FIRST statement, so the edge the
+     * analyzer sees is the decision itself. Only addReason() is skipped, and
+     * that is a sub-microsecond strncat measured against a 10 ms scan period.
+     *
+     * Scope: detection -> decision, inside the ESP32. Contactor travel time and
+     * detection latency (CAN transport, SLAVE_TIMEOUT_MS) are outside the spec
+     * and outside this test. */
+    if (digitalRead(PIN_FAULT_INJECT) == LOW) {
+        lockSystem("TEST Fault Inject");
+    } else {
+        unlockSystem();
+    }
+    return;
+#else
     BMS_Pack_State snaps[TOTAL_PACKS];
     System_Get_Snapshot(snaps);
 
@@ -115,6 +151,7 @@ void Logic_Manager::evaluateProtection() {
             unlockSystem();
         }
     }
+#endif  /* FAULT_INJECT_TEST */
 }
 
 // --- FREE RTOS WRAPPER ---
@@ -132,7 +169,9 @@ void Task_Logic_Run(void *pvParameters) {
     TickType_t xLastWakeTime = xTaskGetTickCount();
     
     while (1) {
+        DBG_SET(DBG_LOGIC);
         myLogic.evaluateProtection();
+        DBG_CLR(DBG_LOGIC);
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(PROTECTION_PERIOD_MS));
     }
 }

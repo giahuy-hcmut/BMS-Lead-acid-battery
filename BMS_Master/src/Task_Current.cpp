@@ -1,4 +1,5 @@
 #include "Task_Current.h"
+#include "Debug_Pins.h"
 
 CurrentSensor_Manager::CurrentSensor_Manager() : ina(INA219_I2C_ADDR) {
     for (uint8_t i = 0; i < AVG_SAMPLES; i++) { samples[i] = 0.0f; }
@@ -71,6 +72,7 @@ void CurrentSensor_Manager::loop() {
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
     while (1) {
+        DBG_SET(DBG_CURRENT);
         if (!probe()) {
             if (i2cFailRun < 0xFFFFU) { i2cFailRun++; }
 
@@ -118,6 +120,7 @@ void CurrentSensor_Manager::loop() {
             }
         }
 
+        DBG_CLR(DBG_CURRENT);
         vTaskDelayUntil(&xLastWakeTime, pdMS_TO_TICKS(TASK_CURRENT_PERIOD_MS));
     }
 }

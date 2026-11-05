@@ -2,6 +2,7 @@
 #include <WiFi.h>
 #include <esp_wifi.h>
 #include "Web_HTML.h"
+#include "Debug_Pins.h"
 
 WebServer_Manager::WebServer_Manager() {
     server = new AsyncWebServer(80);      // Chạy server ở Port 80 (chuẩn Web)
@@ -116,7 +117,9 @@ void Task_WebServer_Run(void *pvParameters) {
     if (!myWeb.init()) vTaskDelete(NULL);
 
     while (1) {
+        DBG_SET(DBG_WEB);
         myWeb.broadcastData();
+        DBG_CLR(DBG_WEB);
         // Cập nhật mỗi 500ms
         vTaskDelay(pdMS_TO_TICKS(WEB_UPDATE_INTERVAL)); 
     }

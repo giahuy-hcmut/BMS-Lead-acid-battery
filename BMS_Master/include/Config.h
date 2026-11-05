@@ -114,6 +114,44 @@
 #define MIN_SOC_SHUTDOWN        5       // Mức % SOC thấp nhất cho phép chạy (Bảo vệ cạn bình)
 #define RECOVERY_SOC            10      // Mức % SOC an toàn để tự động đóng Relay trở lại (Hysteresis)
 
+// --- DECISION-LATENCY TEST: fault detected -> relay decision, must be <100 ms ---
+// Spec covers the ESP32 only: from the instant a fault is DETECTED to the
+// instant the open/close decision is issued. Contactor travel time is out of
+// scope, and so is detection latency (CAN transport, SLAVE_TIMEOUT_MS).
+//
+// While this is defined, evaluateProtection() ignores EVERY real fault source
+// and obeys this pin alone, so the board can be measured bare on the bench:
+// no slaves on the bus, no INA219, no web interaction. Every other task still
+// runs, so the measurement happens under the real CPU load.
+//     pin HIGH (idle) = healthy -> relay ON
+//     pin LOW  (to GND) = fault -> relay OFF
+//
+// GPIO 4 has an internal pull-up, so the whole test rig is ONE jumper wire
+// with nothing else attached: plug it into GPIO 4 and touch the loose end to
+// GND to inject a fault. No resistor, no button, no breadboard.
+// Wired the safe way round: a wire that falls off reads HIGH = healthy, and a
+// wire left touching GND reads LOW = tripped, so a mistake can never appear as
+// a pass. Enabling this steals GPIO 4 from DBG_CURRENT; Debug_Pins.h turns
+// that one channel off by itself.
+//
+// Logic-analyzer channels:
+//     D0 -> GPIO 4  (this input)     falling edge = fault detected
+//     D1 -> GPIO 18 (DBG_LOGIC)      which Task_Logic scan caught it (optional)
+//     D2 -> GPIO 23 (relay drive)    falling edge = decision issued
+//
+// The analyzer MUST watch the physical pin, not a mirror pin driven by
+// firmware: a mirror only changes once Task_Logic has already read the input,
+// which is exactly the waiting time being measured.
+//
+// Expect 0-10 ms, spread uniformly: Task_Logic scans every
+// PROTECTION_PERIOD_MS and the fault can land anywhere inside that window.
+// Touch the wire >=30 times and report the MAXIMUM, never the average - the
+// average lands near 5 ms and hides the worst case, which is what the spec is
+// about.
+#define FAULT_INJECT_TEST
+#define PIN_FAULT_INJECT        4
+
+
 // --- 8. CẤU HÌNH CAN XE (MCP2515 qua SPI) ---
 // ESP32 chỉ có MỘT bộ TWAI và nó đã cõng bus nội bộ master<->slave, nên bus xe
 // bắt buộc cần controller CAN thứ hai. Module HW-184: MCP2515 + TJA1050.

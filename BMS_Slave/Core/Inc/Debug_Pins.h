@@ -6,7 +6,7 @@
  *  reads period, execution time and (absence of) overlap directly off the
  *  waveform - external evidence, independent of SCH_GetOverrunCount().
  *
- *  Pins are PA0..PA5, all free on this board (SWD = PA13/PA14, ADC = PB1,
+ *  Pins are PA0..PA6, all free on this board (SWD = PA13/PA14, ADC = PB1,
  *  DS18B20 = PB7, CAN = PB8/PB9, LED = PC13, OSC = PD0/PD1 - none clash).
  *
  *  Logic-analyzer channel map:
@@ -16,6 +16,7 @@
  *      D3 PA3  Task_Voltage   50 ms
  *      D4 PA4  Task_CAN       1000 ms
  *      D5 PA5  Task_Temp      1000 ms
+ *      D6 PA6  CAN RX ISR     ~5 ms (nhip cua master, KHONG phai task)
  *
  *  Comment out DBG_TIMING below to compile every pin access away to nothing:
  *  the production build then carries zero overhead and leaves PA0..PA5 free.
@@ -37,7 +38,14 @@
 #define DBG_CAN       GPIO_PIN_4   /* D4 */
 #define DBG_TEMP      GPIO_PIN_5   /* D5 */
 
-#define DBG_ALL (DBG_SYSTICK | DBG_SCH | DBG_SOC | DBG_VOLT | DBG_CAN | DBG_TEMP)
+/* PA6 marks the CAN RX INTERRUPT, not a task. It is the only channel that
+ * can prove the hazard documented in ds18b20.c: the CAN ISR firing inside
+ * the 15 us DS18B20 read slot. On the waveform it shows up as a PA6 pulse
+ * NESTED inside a PA5 pulse - the one place where two pulses may overlap,
+ * because an ISR does preempt a task while tasks never preempt each other. */
+#define DBG_CANRX     GPIO_PIN_6   /* D6 */
+
+#define DBG_ALL (DBG_SYSTICK | DBG_SCH | DBG_SOC | DBG_VOLT | DBG_CAN | DBG_TEMP | DBG_CANRX)
 
 /* Bat den (HIGH) / Tat den (LOW). Cung la ham HAL ban da quen dung. */
 #define DBG_SET(pin)  HAL_GPIO_WritePin(GPIOA, (pin), GPIO_PIN_SET)

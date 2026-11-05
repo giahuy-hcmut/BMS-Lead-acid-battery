@@ -13,6 +13,7 @@
                             // GetSnapshot() still hands out voltage+current
                             // from one consistent instant.
 #include <stddef.h>         // NULL
+#include "Debug_Pins.h"    // DBG_CANRX - do thoi gian ISR bang logic analyzer
 
 
 static CAN_TxHeaderTypeDef TxHeader;
@@ -64,12 +65,15 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
     CAN_RxHeaderTypeDef RxHeader;
     uint8_t RxData[8];
 
+    DBG_SET(DBG_CANRX);         // bat den: ISR nhan CAN bat dau
+
     /* Uses the handle HAL passed in, not s_hcan: the ISR must work off
      * whichever peripheral actually fired.
      * Check the return: on failure RxHeader and RxData are uninitialised
      * stack garbage that could match CAN_MASTER_ID by chance and feed a
      * random current into the filter. */
     if (HAL_CAN_GetRxMessage(hcan, CAN_RX_FIFO0, &RxHeader, RxData) != HAL_OK) {
+        DBG_CLR(DBG_CANRX); // tat den: loi ra som (doc mailbox that bai)
         return;
     }
 
@@ -89,6 +93,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan) {
             BMS_Data_SetCurrent((float)raw * 0.01f);
         }
     }
+    DBG_CLR(DBG_CANRX);         // tat den: ISR nhan CAN ket thuc
 }
 
 uint32_t BMS_CAN_GetLastRxTick(void) {
