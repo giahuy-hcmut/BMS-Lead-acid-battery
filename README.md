@@ -525,6 +525,69 @@ bash sim/monte_carlo.sh     # 30 seeds x 3 configurations
 
 ---
 
+IX. Code quality
+----------------
+
+Both firmwares were brought up to one written standard after the thesis
+measurements were finished. The standard is the Innova embedded C (A1–A25) and
+C++ (B1–B25) rule set, which is inspired by MISRA C and CERT C. The code is
+**not** MISRA-compliant and does not claim to be: no checker runs in the loop,
+there is no deviation record, and the vendor HAL under `BMS_Slave/Drivers/` is
+excluded from the rules outright.
+
+What is enforced, and how each claim is checked:
+
+| Check | Tool | Result |
+|---|---|---|
+| File structure — header, guards, section banners | project template validator | **26 / 26** files pass |
+| Comment language, non-ASCII bytes in `BMS_Slave/Core` | grep | **0** |
+| MISRA C:2012 Rule 8.7, internal linkage | manual audit | 0 violations, 4 documented exceptions |
+| STM32 firmware links | `arm-none-eabi-gcc 14.2`, `-Wall -Wextra` | **0 warnings** |
+| STM32 sources type-check on the host | `gcc -fsyntax-only -Wall -Wextra` | **16 / 16** clean |
+| Kalman filter behaviour | Unity, against the exact file that is flashed | **20 / 20** pass |
+| ESP32 firmware links | PlatformIO, Arduino-ESP32 | **0 warnings** |
+
+Footprint, read from the linked images rather than estimated:
+
+| | flash | RAM |
+|---|---|---|
+| STM32F103C8T6 battery monitor | 22 976 B of 65 536 (35 %) | 2 496 B of 20 480 (12 %) |
+| ESP32 central controller | 850 849 B of 1 310 720 (65 %) | 44 444 B of 327 680 (14 %) |
+
+The STM32 image can be reproduced without an IDE:
+
+```bash
+cd BMS_Slave
+arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -std=gnu11 -O0 -g3 -Wall -Wextra \
+  -ffunction-sections -fdata-sections -DUSE_HAL_DRIVER -DSTM32F103xB \
+  -ICore/Inc -IDrivers/STM32F1xx_HAL_Driver/Inc \
+  -IDrivers/STM32F1xx_HAL_Driver/Inc/Legacy \
+  -IDrivers/CMSIS/Device/ST/STM32F1xx/Include -IDrivers/CMSIS/Include \
+  -T STM32F103C8TX_FLASH.ld --specs=nosys.specs -Wl,--gc-sections \
+  Core/Src/*.c Drivers/STM32F1xx_HAL_Driver/Src/*.c \
+  Core/Startup/startup_stm32f103c8tx.s -o bms_slave.elf
+arm-none-eabi-size bms_slave.elf
+```
+
+### 9.1 Defects the pass uncovered
+
+Reading every line in order to document it turned up four real defects. None
+had shown up in testing, and each is a separate `fix:` commit.
+
+| Defect | Consequence | Why it was never seen |
+|---|---|---|
+| DS18B20 scratchpad decoded as `uint16_t` instead of `int16_t` | −10 °C reads as **+4086 °C**, raising a false over-temperature fault and opening the contactor | the batteries have never been below 0 °C |
+| ADC average divided by the number of samples *requested*, not *converted* | a timed-out conversion counts as 0 V; losing 10 of 100 samples under-reports the voltage by 10 % with no fault flag — and a low reading is exactly what makes under-voltage protection trip | one conversion takes 7 µs against a 2 ms timeout |
+| ESP-NOW peer struct left uninitialised | `ifidx` indeterminate, so the peer was registered against whatever happened to be on the stack | the task has not been started since the handheld remote was shelved |
+| Fault-reason string shared across cores with no lock | the web page can show a reason spliced from the old text and the new | the write is ~128 bytes against a 500 ms read period |
+
+The same pass also found four comments and one console banner that contradicted
+the code — among them an OCV equation with the wrong coefficients, a banner
+announcing two lithium packs for a five-battery lead-acid system, and a claim
+that the scheduler dropped 11 % of its activations, which it does not.
+
+---
+
 Repository layout
 -----------------
 
