@@ -1,183 +1,332 @@
+/**
+ * @file      Task_CAN.cpp
+ * @author    Do Dang Gia Huy
+ * @brief     TWAI driver wrapper, frame decoding, and the RX and TX tasks.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
+ */
+
+/**********************
+ *      INCLUDES
+ **********************/
+
 #include "Task_CAN.h"
 
-// --- IMPLEMENTATION CỦA CLASS CAN_MANAGER ---
+/**********************
+ *      DEFINES
+ **********************/
 
-CAN_Manager::CAN_Manager(int tx, int rx, long baud) {
-    txPin = (gpio_num_t)tx;
-    rxPin = (gpio_num_t)rx;
-    baudRate = baud;
-    isReady = false;
+/** Payload length of the master frame; bytes 2-7 are reserved and zero. */
+constexpr uint8_t kMasterFrameDlc = 8U;
+
+/* Smallest payload length that still carries each field of a slave frame.
+ * Tested rather than assumed, so a short frame from an older build decodes
+ * what it can instead of reading past the data it actually sent. */
+constexpr uint8_t kDlcWithVoltage = 2U;     /**< bytes 0-1 */
+constexpr uint8_t kDlcWithSoc     = 5U;     /**< byte 4    */
+constexpr uint8_t kDlcWithStatus  = 7U;     /**< bytes 5-6 */
+
+/** Slave frames carry the temperature offset so it fits in a uint8_t. */
+constexpr int16_t kSlaveTempOffsetC = 40;
+
+/** Delay after a driver error before retrying, so a broken bus cannot spin
+ * the RX task at 100% CPU. */
+constexpr TickType_t kRxErrorBackoff = pdMS_TO_TICKS(10);
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/* ONE object shared by TWO tasks. The ESP-IDF TWAI driver is a singleton -
+ * twai_driver_install() may be called only once - so the object has to live
+ * at file scope rather than inside either task.
+ *
+ * No handshake is needed between them: Rx calls init(), and
+ * sendCurrentFrame() opens with `if (!isReady_) return;`, so Tx stays quiet
+ * by itself until Rx has finished initialising.
+ *
+ * The constructor only assigns four members and touches no hardware, so it
+ * is safe to run before setup() like any other C++ object at file scope. */
+static CanManager s_canBus(kPinCanTx, kPinCanRx, kCanBaudRate);
+
+/**********************
+ *      MACROS
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Record the pins and bit rate; touches no hardware.
+ * @param[in] tx    Transmit pin.
+ * @param[in] rx    Receive pin.
+ * @param[in] baud  Bit rate.
+ */
+CanManager::CanManager(gpio_num_t tx, gpio_num_t rx, uint32_t baud)
+    : txPin_(tx),
+      rxPin_(rx),
+      baudRate_(baud),
+      isReady_(false)
+{
 }
 
-bool CAN_Manager::init() {
-    twai_general_config_t g_config = TWAI_GENERAL_CONFIG_DEFAULT(txPin, rxPin, TWAI_MODE_NORMAL);
-    
-    // Cấu hình tốc độ
+/**
+ * @brief  Install and start the TWAI driver.
+ * @return true when the bus is up.
+ */
+bool CanManager::init()
+{
+    twai_general_config_t g_config =
+        TWAI_GENERAL_CONFIG_DEFAULT(txPin_, rxPin_, TWAI_MODE_NORMAL);
+
     twai_timing_config_t t_config = TWAI_TIMING_CONFIG_500KBITS();
-    if (baudRate == 250000) t_config = TWAI_TIMING_CONFIG_250KBITS();
-    else if (baudRate == 1000000) t_config = TWAI_TIMING_CONFIG_1MBITS();
-    
+
+    if (baudRate_ == 250000U)
+    {
+        t_config = TWAI_TIMING_CONFIG_250KBITS();
+    }
+    else if (baudRate_ == 1000000U)
+    {
+        t_config = TWAI_TIMING_CONFIG_1MBITS();
+    }
+
     twai_filter_config_t f_config = TWAI_FILTER_CONFIG_ACCEPT_ALL();
 
-    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK) {
-        if (twai_start() == ESP_OK) {
-            isReady = true;
-            // Chỉ in 1 dòng báo khởi động thành công, không spam
-            Serial.println("[CAN] Driver Started Successfully");
+    if (twai_driver_install(&g_config, &t_config, &f_config) == ESP_OK)
+    {
+        if (twai_start() == ESP_OK)
+        {
+            isReady_ = true;
+            Serial.println("[CAN] Driver started successfully");
             return true;
         }
     }
-    
-    Serial.println("[CAN] Driver Failed!");
+
+    Serial.println("[CAN] Driver failed!");
     return false;
 }
 
-void CAN_Manager::sendCurrentFrame(float current_a) {
-    if (!isReady) return;
+/**
+ * @brief  Read one frame, BLOCKING until one arrives.
+ * @param[out] msgOut  Decoded frame.
+ * @return true when a frame was decoded.
+ */
+bool CanManager::readMessage(BmsMessage &msgOut)
+{
+    twai_message_t rx_msg;
 
+    if (!isReady_)
+    {
+        return false;
+    }
+
+    /* BLOCKS indefinitely. This used to poll with a zero timeout because the
+     * SAME task also had to send 0x100 every 5 ms, and blocking here meant
+     * the send never got its turn. Transmission moved to Task_CAN_Tx_Run, so
+     * blocking is now possible.
+     *
+     * Underneath, twai_receive() is an xQueueReceive on the queue the
+     * driver's ISR feeds. So: no frame means the task is Blocked at 0% CPU;
+     * a frame wakes it through the ISR, and because this task is priority 5,
+     * the highest on core 1, portYIELD_FROM_ISR switches context at the end
+     * of the ISR. Latency in microseconds instead of the up-to-1 ms of the
+     * old polling loop. */
+    if (twai_receive(&rx_msg, portMAX_DELAY) != ESP_OK)
+    {
+        return false;
+    }
+
+    msgOut.can_id = rx_msg.identifier;
+
+    if (rx_msg.data_length_code >= kDlcWithVoltage)
+    {
+        uint16_t raw_vol = (uint16_t)(((uint16_t)rx_msg.data[0] << 8) |
+                                      (uint16_t)rx_msg.data[1]);
+        msgOut.voltage = (float)raw_vol / kScaleX100;
+    }
+    else
+    {
+        msgOut.voltage = 0.0f;
+    }
+
+    /* Byte 4 = SOC (%) from the slave's Kalman filter.
+     *
+     * Bytes 2-3 carry the current and are deliberately NOT decoded: that is
+     * the master's OWN value coming back from frame 0x100, so reading it
+     * would create a second source of truth for something already known.
+     * Only worth decoding later as a loopback diagnostic. */
+    if (rx_msg.data_length_code >= kDlcWithSoc)
+    {
+        msgOut.soc = rx_msg.data[4];
+    }
+    else
+    {
+        msgOut.soc = 0U;
+    }
+
+    if (rx_msg.data_length_code >= kDlcWithStatus)
+    {
+        msgOut.temperature = (int8_t)((int16_t)rx_msg.data[5] - kSlaveTempOffsetC);
+        msgOut.status      = rx_msg.data[6];
+    }
+    else
+    {
+        msgOut.temperature = 0;
+        msgOut.status      = 0U;
+    }
+
+    return true;
+}
+
+/**
+ * @brief  Transmit the kCanMasterId frame carrying the pack current.
+ * @param[in] current_a  Amperes, positive = discharge.
+ * @return None.
+ */
+void CanManager::sendCurrentFrame(float current_a)
+{
     twai_status_info_t status;
+    float              clamped = current_a;
+    int16_t            raw;
+
+    if (!isReady_)
+    {
+        return;
+    }
+
     twai_get_status_info(&status);
 
-    if (status.state == TWAI_STATE_BUS_OFF) {
+    if (status.state == TWAI_STATE_BUS_OFF)
+    {
         twai_initiate_recovery();
         return;
     }
-    if (status.state == TWAI_STATE_STOPPED) {
+
+    if (status.state == TWAI_STATE_STOPPED)
+    {
         twai_start();
         return;
     }
-    if (status.state == TWAI_STATE_RECOVERING) {
+
+    if (status.state == TWAI_STATE_RECOVERING)
+    {
         return;
     }
 
-    /* Clamp before scaling: int16 spans +/-327.67 A. A wild sensor reading
-     * would otherwise wrap sign and tell every slave the pack is charging
-     * while it is really being discharged - the SOC would climb under load
-     * with no fault raised anywhere. */
-    if (current_a >  320.0f) { current_a =  320.0f; }
-    if (current_a < -320.0f) { current_a = -320.0f; }
+    /* Clamp before scaling: an int16 in hundredths of an amp spans
+     * +/-327.67 A. A wild sensor reading would otherwise wrap sign and tell
+     * every slave the pack is charging while it is really being discharged -
+     * the SOC would climb under load with no fault raised anywhere. */
+    if (clamped > kCurrentClampA)
+    {
+        clamped = kCurrentClampA;
+    }
 
-    int16_t raw = (int16_t)lroundf(current_a * 100.0f);
+    if (clamped < -kCurrentClampA)
+    {
+        clamped = -kCurrentClampA;
+    }
+
+    raw = (int16_t)lroundf(clamped * kScaleX100);
 
     /* `= {}` zero-fills data[], so bytes 2-7 go out as 0x00 without being
      * written again below. */
     twai_message_t msg = {};
     msg.identifier = kCanMasterId;
-    /* DLC 8 on BOTH directions, the J1939 convention: a fixed frame size means
-     * adding a field later only fills a reserved byte instead of changing the
-     * DLC, which would break every receiver that tests it. Bytes 2-7 are
-     * RESERVED and must stay 0x00 until a field is defined here AND in
-     * PROJECT_BRIEF section 1.
-     * Cost: 75 -> 135 bits worst case (stuffing included), 150 -> 270 us at
-     * 500 kbps. At a 5 ms period that is 3.0% -> 5.4% bus load, and the
+
+    /* DLC 8 in BOTH directions, the J1939 convention: a fixed frame size
+     * means adding a field later only fills a reserved byte instead of
+     * changing the DLC, which would break every receiver that tests it.
+     * Bytes 2-7 are RESERVED and must stay 0x00 until a field is defined
+     * here AND in the project brief.
+     * Cost: 75 -> 135 bits worst case including stuffing, 150 -> 270 us at
+     * 500 kbit/s. At a 5 ms period that is 3.0% -> 5.4% bus load, and the
      * blocking time other nodes see grows by the same 120 us. */
-    msg.data_length_code = 8;                        /* was 2, and 0 before that */
-    msg.data[0] = (uint8_t)((raw >> 8) & 0xFF);      /* MSB first, matching   */
-    msg.data[1] = (uint8_t)(raw & 0xFF);             /* bytes 2-3 of a slave  */
+    msg.data_length_code = kMasterFrameDlc;
+    msg.data[0] = (uint8_t)(((uint16_t)raw >> 8) & kByteMask);  /* MSB first, */
+    msg.data[1] = (uint8_t)((uint16_t)raw & kByteMask);         /* as in a slave frame */
+
     twai_transmit(&msg, pdMS_TO_TICKS(kCanTxTimeoutMs));
 }
 
-bool CAN_Manager::readMessage(BmsMessage &msgOut) {
-    if (!isReady) return false;
+/**
+ * @brief  Receive task: blocks on the bus and queues each decoded frame.
+ * @param[in] pvParameters  Unused.
+ * @return None.
+ */
+void Task_CAN_Rx_Run(void *pvParameters)
+{
+    BmsMessage tempMsg;
 
-    twai_message_t rx_msg;
-    /* CHAN vo han. Truoc day day la tham do (timeout 0) vi CUNG task nay con phai
-     * gui 0x100 moi 5 ms - chan o day thi khong bao gio toi luot gui. Viec gui da
-     * tach sang Task_CAN_Tx_Run nen gio chan duoc.
-     *
-     * Ben trong, twai_receive() la xQueueReceive tren hang doi ma ISR cua driver
-     * nap vao. Nen: khong frame -> task Blocked, 0% CPU; co frame -> ISR danh thuc,
-     * va vi task nay prio 5 (cao nhat loi 1) nen portYIELD_FROM_ISR chuyen ngu canh
-     * ngay cuoi ISR. Tre ~us thay vi <=1 ms cua vong tham do cu. */
-    if (twai_receive(&rx_msg, portMAX_DELAY) == ESP_OK) {
-        
-        msgOut.can_id = rx_msg.identifier;
-        
-        // Giải mã Voltage
-        if (rx_msg.data_length_code >= 2) {
-            uint16_t raw_vol = (rx_msg.data[0] << 8) | rx_msg.data[1];
-            msgOut.voltage = raw_vol / 100.0f;
-        } else {
-            msgOut.voltage = 0.0f;
-        }
+    (void)pvParameters;
 
-        /* Byte 4 = SOC (%) from the slave's Kalman filter.
-         *
-         * Bytes 2-3 carry the current and are deliberately NOT decoded: that is
-         * the master's OWN value coming back from frame 0x100, so reading it
-         * would create a second source of truth for something already known.
-         * Only worth decoding later as a loopback diagnostic. */
-        if (rx_msg.data_length_code >= 5) {
-            msgOut.soc = rx_msg.data[4];
-        } else {
-            msgOut.soc = 0;
-        }
-
-        // BỔ SUNG: Giải mã Nhiệt độ (trừ đi 40 offset) và Mã lỗi
-        if (rx_msg.data_length_code >= 7) {
-            msgOut.temperature = (int8_t)rx_msg.data[5] - 40;
-            msgOut.status = rx_msg.data[6];
-        } else {
-            msgOut.temperature = 0;
-            msgOut.status = 0;
-        }
-        
-        return true; 
-    }
-    return false; 
-}
-
-
-/* MOT doi tuong, HAI task dung chung. Driver TWAI cua ESP-IDF la singleton -
- * twai_driver_install() chi duoc goi MOT lan - nen doi tuong phai o file scope
- * thay vi tao trong tung task.
- *
- * Khong can bat tay dong bo nao: Rx goi init(), con sendCurrentFrame() da co san
- * `if (!isReady) return;` ngay dong dau, nen Tx tu im lang cho toi khi Rx init
- * xong.
- *
- * Constructor chi gan 4 bien, khong dung phan cung, nen an toan khi chay truoc
- * setup() nhu moi bien toan cuc C++ khac. */
-static CAN_Manager s_canBus(kPinCanTx, kPinCanRx, kCanBaudRate);
-
-// --- RX: SU KIEN. Ngu 0% CPU khi bus im, thuc ~us sau khi co ngat. ---
-void Task_CAN_Rx_Run(void *pvParameters) {
-    if (!s_canBus.init()) {
-        Serial.println("[CAN] Init Failed -> Delete Rx Task");
+    if (!s_canBus.init())
+    {
+        Serial.println("[CAN] Init failed -> delete Rx task");
         vTaskDelete(NULL);
     }
 
-    BmsMessage tempMsg;
-
-    for (;;) {
-        if (s_canBus.readMessage(tempMsg)) {    /* CHAN o day */
+    for (;;)
+    {
+        if (s_canBus.readMessage(tempMsg))       /* BLOCKS here */
+        {
             xQueueSend(canQueue, &tempMsg, 0);
-        } else {
-            /* portMAX_DELAY khong bao gio timeout, nen false = LOI DRIVER: dang
-             * recover sau bus-off, hoac driver stopped. Khong co delay nay thi
-             * vong lap quay 100% CPU suot thoi gian bus con hong.
+        }
+        else
+        {
+            /* portMAX_DELAY never times out, so false means a DRIVER ERROR:
+             * recovering from bus-off, or the driver stopped. Without this
+             * delay the loop spins at 100% CPU for as long as the bus stays
+             * broken.
              *
-             * Tx moi la ben goi twai_initiate_recovery() (loi bus-off phat hien
-             * tu phia gui), nen hai task tu phoi hop: Tx sua bus, Rx doi. */
-            vTaskDelay(pdMS_TO_TICKS(10));
+             * Tx is the side that calls twai_initiate_recovery(), since
+             * bus-off is detected from the transmitting end, so the two
+             * tasks co-operate: Tx repairs the bus, Rx waits. */
+            vTaskDelay(kRxErrorBackoff);
         }
     }
 }
 
-// --- TX: CHU KY. 0x100 cho dong pack, kiem luon vai heartbeat cho slave. ---
-void Task_CAN_Tx_Run(void *pvParameters) {
-    /* vTaskDelayUntil, KHONG phai vTaskDelay: cai sau do chu ky tu luc cong viec
-     * KET THUC nen thoi gian thuc thi bi cong vao moi vong va nhip troi dan. Cach
-     * cu (vTaskDelay(1ms) + so tick) con lam nhip bi luong tu hoa theo tick 1 ms,
-     * thinh thoang ra 6 ms thay vi 5. Cung ly do Task_VehicleCAN dung DelayUntil. */
+/**
+ * @brief  Transmit task: sends the current frame on a fixed period.
+ * @param[in] pvParameters  Unused.
+ * @return None.
+ */
+void Task_CAN_Tx_Run(void *pvParameters)
+{
+    /* vTaskDelayUntil, NOT vTaskDelay: the latter measures the period from
+     * when the work FINISHES, so the execution time is added to every cycle
+     * and the cadence drifts. The older approach, vTaskDelay(1 ms) plus a
+     * tick count, also quantised the period to the 1 ms tick and produced
+     * 6 ms instead of 5 now and then. Task_VehicleCAN uses DelayUntil for
+     * the same reason. */
     TickType_t last = xTaskGetTickCount();
 
-    for (;;) {
-        /* System_Get_SlavesActive() giu nguyen: tat no tu web van la cach cho slave
-         * ngu, vi 0x100 kiem luon vai heartbeat. */
-        if (System_Get_SlavesActive()) {
+    (void)pvParameters;
+
+    for (;;)
+    {
+        /* System_Get_SlavesActive() stays: switching it off from the web is
+         * still how the slaves are put to sleep, because 0x100 doubles as
+         * their heartbeat. */
+        if (System_Get_SlavesActive())
+        {
             s_canBus.sendCurrentFrame(System_Get_Current());
         }
+
         vTaskDelayUntil(&last, pdMS_TO_TICKS(kCanMasterIntervalMs));
     }
 }
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/
