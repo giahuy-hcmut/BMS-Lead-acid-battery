@@ -1,66 +1,102 @@
+/**
+ * @file      Task_Current.cpp
+ * @author    Do Dang Gia Huy
+ * @brief     INA219 sampling, trimmed-mean filtering and sensor-loss handling.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
+ */
+
+/**********************
+ *      INCLUDES
+ **********************/
+
 #include "Task_Current.h"
 
-CurrentSensor_Manager::CurrentSensor_Manager() : ina(kIna219I2cAddr) {
-    for (uint8_t i = 0; i < AVG_SAMPLES; i++) { samples[i] = 0.0f; }
-    sampleIndex = 0;
-    primed      = false;
-    i2cFailRun  = 0;
-    ready       = false;
+/**********************
+ *      DEFINES
+ **********************/
+
+/** Ceiling for the consecutive-failure counter, so it cannot wrap back to a
+ * value below kCurrentFaultLimit and silently clear the fault. */
+constexpr uint16_t kFailRunMax = 0xFFFFU;
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/**********************
+ *      MACROS
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Bind the driver to the configured address and clear the window.
+ */
+CurrentSensorManager::CurrentSensorManager()
+    : ina_(kIna219I2cAddr),
+      samples_{},
+      sampleIndex_(0U),
+      primed_(false),
+      i2cFailRun_(0U),
+      ready_(false)
+{
 }
 
-void CurrentSensor_Manager::init() {
+/**
+ * @brief  Start the I2C bus and the INA219.
+ * @return None.
+ */
+void CurrentSensorManager::init()
+{
     Wire.begin(kPinInaSda, kPinInaScl);
 
-    /* begin() de PGA o /8 (+/-320 mV). Tren shunt 0.75 mOhm do la +/-427 A, nen
-     * nguong trip kMaxDischargeCurrentA (150 A) voi tay tro duoc va con du 277 A.
+    /* begin() leaves the PGA at /8, which is +/-320 mV. Across the
+     * 0.75 mOhm shunt that is +/-427 A, so the kMaxDischargeCurrentA trip
+     * at 150 A has plenty of headroom and 277 A to spare.
      *
-     * Dieu nay DA DO tren bench - cap 3.27 V vi sai vao IN+/IN- va so doc kep o
-     * dung 320.000 mV voi sd = 0 - chu KHONG lay tu tai lieu thu vien. Mot thang
-     * do hep hon (PGA /2 -> 107 A) se lam bao ve qua dong khong bao gio trip duoc,
-     * va no that bai am tham. */
-    ready = ina.begin(&Wire);
-    currentSensorFault = !ready;
+     * This was MEASURED on the bench - 3.27 V differential into IN+/IN- read
+     * back as exactly 320.000 mV with zero standard deviation - rather than
+     * taken from the library documentation. A narrower range (PGA /2 gives
+     * 107 A) would make the over-current protection unable to trip at all,
+     * and it would fail silently. */
+    ready_             = ina_.begin(&Wire);
+    currentSensorFault = !ready_;
 
-    if (!ready) {
-        Serial.println("[CURRENT] INA219 NOT FOUND - kiem SDA 21 / SCL 22 / 3V3");
+    if (!ready_)
+    {
+        Serial.println("[CURRENT] INA219 not found - check SDA 21 / SCL 22 / 3V3");
         return;
     }
+
     Serial.println("[CURRENT] INA219 ready - shunt 0.75 mOhm, range +/-427 A");
 }
 
-bool CurrentSensor_Manager::probe(void) {
-    /* Thuan Wire API, khong can biet thanh ghi nao. getShuntVoltage_mV() tra ve 0.0
-     * CA khi dong that bang 0 LAN khi bus chet, va thu vien khong bao loi gi cua
-     * rieng no - day la thu duy nhat phan biet duoc hai truong hop do. */
-    Wire.beginTransmission(kIna219I2cAddr);
-    return (Wire.endTransmission() == 0);
-}
-
-float CurrentSensor_Manager::trimmedMean(void) const {
-    float sum = 0.0f;
-    float lo  = samples[0];
-    float hi  = samples[0];
-
-    for (uint8_t i = 0; i < AVG_SAMPLES; i++) {
-        sum += samples[i];
-        if (samples[i] < lo) { lo = samples[i]; }
-        if (samples[i] > hi) { hi = samples[i]; }
-    }
-
-    /* Bo 1 min + 1 max -> mot mau rac don le KHONG dich duoc ket qua chut nao.
-     * Con lai 6 mau. Trung binh thuong thi mot mau -168 mV trong 8 mau se keo ket
-     * qua ve -21 mV = -28 A. */
-    return (sum - lo - hi) / (float)(AVG_SAMPLES - 2U);
-}
-
-void CurrentSensor_Manager::loop() {
+/**
+ * @brief  Sample, filter and publish the pack current forever.
+ * @return None.
+ */
+void CurrentSensorManager::loop()
+{
     /* One job: measure the pack current and publish it.
      *
      * What used to be here and is now gone:
-     *   - analogRead() on GPIO 32 against a Hall sensor (ACS758) - the advisor
-     *     requires a shunt, so the Hall path is deleted, not commented out
-     *   - a 50-sample x 10 ms moving average = a 500 ms window, which lagged the
-     *     true current by ~250 ms while the slaves' Kalman Predict runs at 200 Hz
+     *   - analogRead() on GPIO 32 against a Hall sensor (ACS758) - the
+     *     advisor requires a shunt, so the Hall path is deleted, not
+     *     commented out
+     *   - a 50-sample x 10 ms moving average = a 500 ms window, which lagged
+     *     the true current by about 250 ms while the slaves' Kalman Predict
+     *     runs at 200 Hz
      *   - a blocking wait for the first CAN voltage, only there to seed SOC
      *   - an OCV interpolation for the initial SOC
      *   - Coulomb integration
@@ -70,49 +106,71 @@ void CurrentSensor_Manager::loop() {
      * Each slave now runs its own Kalman filter and reports SOC in byte 4. */
     TickType_t xLastWakeTime = xTaskGetTickCount();
 
-    while (1) {
-        if (!probe()) {
-            if (i2cFailRun < 0xFFFFU) { i2cFailRun++; }
+    while (1)
+    {
+        if (!probe())
+        {
+            if (i2cFailRun_ < kFailRunMax)
+            {
+                i2cFailRun_++;
+            }
 
-            /* Mat cam bien dong = mat luon bao ve qua dong. INA219 khong co chan
-             * ALE (INA226 thi co) nen duong mem nay la lop DUY NHAT.
+            /* Losing the current sensor means losing the over-current
+             * protection with it. The INA219 has no ALE pin (the INA226
+             * does), so this software path is the ONLY layer.
              *
-             * Cong bo 0.0 A thay vi bao loi se de Kalman cua ca 5 slave tich dong
-             * bang 0 VA de phep so (0 > 150 A) khong bao gio dung: hai that bai,
-             * ca hai deu im lang. */
-            if (i2cFailRun >= kCurrentFaultLimit) {
+             * Publishing 0.0 A instead of raising a fault would make all
+             * five slaves integrate zero current AND make the test
+             * (0 > 150 A) never true: two failures, both silent. */
+            if (i2cFailRun_ >= kCurrentFaultLimit)
+            {
                 currentSensorFault = true;
 
-                /* Vut bo dem: sau khi bus hoi, khong tron mau cu voi mau moi. */
-                primed      = false;
-                sampleIndex = 0;
+                /* Drop the window: after the bus recovers, do not mix stale
+                 * samples with fresh ones. */
+                primed_      = false;
+                sampleIndex_ = 0U;
             }
-        } else {
-            if (i2cFailRun >= kCurrentFaultLimit) {
-                /* Bus hoi sau mot lan mat THAT. Goi lai begin() thay vi tin rang
-                 * chip con giu cau hinh - no co the da bi cup nguon. (Gia tri reset
-                 * cua INA219 tinh co cung la PGA /8, nhung dua vao do la mot gia
-                 * dinh ngam.) */
-                ina.begin(&Wire);
+        }
+        else
+        {
+            if (i2cFailRun_ >= kCurrentFaultLimit)
+            {
+                /* The bus recovered from a REAL loss. Call begin() again
+                 * rather than trusting the chip to have kept its
+                 * configuration - it may have been power cycled. The INA219
+                 * reset default happens to be PGA /8 as well, but relying on
+                 * that would be an unstated assumption. */
+                ina_.begin(&Wire);
             }
-            i2cFailRun         = 0;
+
+            i2cFailRun_        = 0U;
             currentSensorFault = false;
 
-            samples[sampleIndex] = ina.getShuntVoltage_mV();
-            sampleIndex = (uint8_t)((sampleIndex + 1U) % AVG_SAMPLES);
-            if (sampleIndex == 0U) { primed = true; }
+            samples_[sampleIndex_] = ina_.getShuntVoltage_mV();
+            sampleIndex_ = (uint8_t)((sampleIndex_ + 1U) % kAvgSamples);
 
-            /* Cho du AVG_SAMPLES mau moi cong bo: cat bien tren mot bo dem con so 0
-             * khoi tao se ra mot con so sai. */
-            if (primed) {
+            if (sampleIndex_ == 0U)
+            {
+                primed_ = true;
+            }
+
+            /* Publish only once kAvgSamples fresh samples exist: trimming a
+             * window still holding initialisation zeros yields a wrong
+             * number. */
+            if (primed_)
+            {
                 float mv = trimmedMean();
 
-                /* Nhan (A/mV), khong chia - cung ly do Task_CAN giai ma bang *0.01f
-                 * thay vi /100. */
-                float currentA = (mv - kCurrentZeroMv) * kCurrentSign
-                                 * (kShuntFullA / kShuntFullMv);
+                /* Multiply by (A/mV) rather than divide, for the same reason
+                 * Task_CAN decodes with *0.01f instead of /100. */
+                float currentA = (mv - kCurrentZeroMv) * kCurrentSign *
+                                 (kShuntFullA / kShuntFullMv);
 
-                if (fabsf(currentA) < kCurrentIdleBandA) { currentA = 0.0f; }
+                if (fabsf(currentA) < kCurrentIdleBandA)
+                {
+                    currentA = 0.0f;
+                }
 
                 System_Update_Current(currentA);
             }
@@ -122,9 +180,59 @@ void CurrentSensor_Manager::loop() {
     }
 }
 
-// --- FREE RTOS WRAPPER ---
-void Task_Current_Run(void *pvParameters) {
-    CurrentSensor_Manager mySensor;
+/**
+ * @brief  FreeRTOS entry point for the current sensor.
+ * @param[in] pvParameters  Unused.
+ * @return None.
+ */
+void Task_Current_Run(void *pvParameters)
+{
+    CurrentSensorManager mySensor;
+
+    (void)pvParameters;
+
     mySensor.init();
     mySensor.loop();
+}
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Does the chip still acknowledge its address?
+ * @return true when the address was acknowledged.
+ */
+bool CurrentSensorManager::probe(void)
+{
+    Wire.beginTransmission(kIna219I2cAddr);
+    return (Wire.endTransmission() == 0);
+}
+
+/**
+ * @brief  Mean of the window with the lowest and highest sample discarded.
+ * @return Filtered shunt voltage, mV.
+ */
+float CurrentSensorManager::trimmedMean(void) const
+{
+    float sum = 0.0f;
+    float lo  = samples_[0];
+    float hi  = samples_[0];
+
+    for (uint8_t i = 0U; i < kAvgSamples; i++)
+    {
+        sum += samples_[i];
+
+        if (samples_[i] < lo)
+        {
+            lo = samples_[i];
+        }
+
+        if (samples_[i] > hi)
+        {
+            hi = samples_[i];
+        }
+    }
+
+    return (sum - lo - hi) / (float)(kAvgSamples - 2U);
 }
