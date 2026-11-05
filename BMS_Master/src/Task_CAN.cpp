@@ -77,7 +77,7 @@ void CAN_Manager::sendCurrentFrame(float current_a) {
     twai_transmit(&msg, pdMS_TO_TICKS(kCanTxTimeoutMs));
 }
 
-bool CAN_Manager::readMessage(BMS_Message_t &msgOut) {
+bool CAN_Manager::readMessage(BmsMessage &msgOut) {
     if (!isReady) return false;
 
     twai_message_t rx_msg;
@@ -147,7 +147,7 @@ void Task_CAN_Rx_Run(void *pvParameters) {
         vTaskDelete(NULL);
     }
 
-    BMS_Message_t tempMsg;
+    BmsMessage tempMsg;
 
     for (;;) {
         if (s_canBus.readMessage(tempMsg)) {    /* CHAN o day */

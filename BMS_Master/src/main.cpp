@@ -12,7 +12,7 @@
 void setup() {
     Serial.begin(115200);
 
-    Serial.printf("\n\n>>> KÍCH THƯỚC GÓI TIN: %d Bytes <<<\n\n", sizeof(BMS_Telemetry_Packet));
+    Serial.printf("\n\n>>> KÍCH THƯỚC GÓI TIN: %d Bytes <<<\n\n", sizeof(BmsTelemetryPacket));
     System_Data_Init();
 
     // --- CORE 1: NHIỆM VỤ SỐNG CÒN (REAL-TIME) ---

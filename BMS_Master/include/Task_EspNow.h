@@ -10,7 +10,7 @@ class EspNow_Manager {
 private:
     uint8_t targetMac[6];
     esp_now_peer_info_t peerInfo;
-    BMS_Telemetry_Packet outgoingData;
+    BmsTelemetryPacket outgoingData;
 
 public:
     EspNow_Manager(const uint8_t* mac);

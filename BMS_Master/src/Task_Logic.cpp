@@ -54,7 +54,7 @@ void Logic_Manager::unlockSystem() {
 
 // BỘ NÃO ĐÁNH GIÁ AN TOÀN - gom TAT CA loi dang hoat dong, khong chi loi dau
 void Logic_Manager::evaluateProtection() {
-    BMS_Pack_State snaps[kTotalPacks];
+    BmsPackState snaps[kTotalPacks];
     System_Get_Snapshot(snaps);
 
     /* Weakest battery limits a series pack. -1 means at least one slave is

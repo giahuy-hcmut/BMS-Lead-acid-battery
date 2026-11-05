@@ -82,8 +82,8 @@ private:
     uint8_t muxIndex;       // bình nào sẽ gửi trong frame 0x201 lần tới
     uint8_t txFailRun;      // số lần TX thất bại LIÊN TIẾP
 
-    void buildStatus(const BMS_Pack_State *snaps, uint8_t *out);
-    void buildPackDetail(const BMS_Pack_State *snaps, uint8_t *out);
+    void buildStatus(const BmsPackState *snaps, uint8_t *out);
+    void buildPackDetail(const BmsPackState *snaps, uint8_t *out);
     void txFrame(uint32_t id, const uint8_t *data);
 
 public:

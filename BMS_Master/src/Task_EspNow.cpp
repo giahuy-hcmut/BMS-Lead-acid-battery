@@ -35,7 +35,7 @@ bool EspNow_Manager::init() {
 }
 
 void EspNow_Manager::sendTelemetry() {
-    BMS_Pack_State snapPacks[kTotalPacks];
+    BmsPackState snapPacks[kTotalPacks];
     System_Get_Snapshot(snapPacks);
 
     outgoingData.totalVoltage  = System_TotalVoltage(snapPacks);

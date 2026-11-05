@@ -51,7 +51,7 @@ void Terminal_Dashboard::printHeader(uint32_t uptime) {
     Serial.println("|-------|---------|-------|------|-------------|---------|");
 }
 
-void Terminal_Dashboard::printRow(int index, BMS_Pack_State &pack) {
+void Terminal_Dashboard::printRow(int index, BmsPackState &pack) {
     int canID = kCanBaseId + index;
     Serial.printf("| 0x%03X | ", canID);
     

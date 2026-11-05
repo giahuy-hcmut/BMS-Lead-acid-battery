@@ -48,7 +48,7 @@ bool WebServer_Manager::init() {
 }
 
 String WebServer_Manager::buildJsonString() {
-    BMS_Pack_State snapPacks[kTotalPacks];
+    BmsPackState snapPacks[kTotalPacks];
     System_Get_Snapshot(snapPacks);
 
     float totalV = System_TotalVoltage(snapPacks);

@@ -8,12 +8,12 @@
 class Terminal_Dashboard {
 private:
     // Bộ nhớ đệm (Cache) để lưu dữ liệu lấy từ kho chung
-    BMS_Pack_State localPacks[kTotalPacks];
+    BmsPackState localPacks[kTotalPacks];
     
     // Các hàm nội bộ (Helper methods) - chỉ dùng trong class này
     void fetchData();           // Copy dữ liệu an toàn (Mutex)
     void printHeader(uint32_t uptime); // In tiêu đề
-    void printRow(int id, BMS_Pack_State &pack); // In 1 dòng dữ liệu
+    void printRow(int id, BmsPackState &pack); // In 1 dòng dữ liệu
     void printFooter();         // In đường kẻ kết thúc
 
 public:

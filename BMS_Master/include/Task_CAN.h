@@ -3,7 +3,7 @@
 
 #include <Arduino.h>
 #include "driver/twai.h"
-#include "System_Data.h" // Để lấy kiểu BMS_Message_t
+#include "System_Data.h" // Để lấy kiểu BmsMessage
 
 // Class quản lý phần cứng CAN (Driver Layer)
 class CAN_Manager {
@@ -26,7 +26,7 @@ public:
     // twai_receive không bao giờ timeout. false = LỖI DRIVER (stopped, hoặc
     // đang recover sau bus-off). Người gọi PHẢI delay, nếu không sẽ quay
     // 100% CPU suốt thời gian bus hỏng.
-    bool readMessage(BMS_Message_t &msgOut);
+    bool readMessage(BmsMessage &msgOut);
 
     // Gửi frame kCanMasterId chở dòng pack.
     //   current_a : ampe, >0 = XẢ (quy ước chốt cho cả hệ)

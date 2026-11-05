@@ -36,7 +36,7 @@ bool VehicleCAN_Manager::init() {
     return true;
 }
 
-void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) {
+void VehicleCAN_Manager::buildStatus(const BmsPackState *snaps, uint8_t *out) {
     /* Tất cả suy từ snapshot mà task này đã có. Không thêm field nào vào
      * System_Data: đóng gói là việc của task, kho vẫn chỉ giữ dữ liệu. */
     float   totalV    = System_TotalVoltage(snaps);   /* đã bỏ bình offline */
@@ -109,7 +109,7 @@ void VehicleCAN_Manager::buildStatus(const BMS_Pack_State *snaps, uint8_t *out) 
     out[7] = aliveCounter++;
 }
 
-void VehicleCAN_Manager::buildPackDetail(const BMS_Pack_State *snaps, uint8_t *out) {
+void VehicleCAN_Manager::buildPackDetail(const BmsPackState *snaps, uint8_t *out) {
     uint8_t count = System_GetPackCount();
     uint8_t idx   = muxIndex;
 
@@ -154,7 +154,7 @@ void VehicleCAN_Manager::update() {
     /* MỘT lần lấy snapshot cho cả hai frame: System_Get_Snapshot() khoá mutex,
      * gọi hai lần mỗi chu kỳ là khoá hai lần không cần thiết. Và nhờ vậy hai
      * frame mô tả CÙNG một thời điểm. */
-    BMS_Pack_State snaps[kTotalPacks];
+    BmsPackState snaps[kTotalPacks];
     System_Get_Snapshot(snaps);
 
     uint8_t data[8];
