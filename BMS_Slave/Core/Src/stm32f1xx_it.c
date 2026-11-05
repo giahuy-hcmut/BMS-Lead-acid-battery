@@ -191,14 +191,23 @@ void SysTick_Handler(void)
   /* USER CODE END SysTick_IRQn 0 */
   HAL_IncTick();
   /* USER CODE BEGIN SysTick_IRQn 1 */
-    DBG_SET(DBG_SYSTICK); DBG_CLR(DBG_SYSTICK);   // xung danh dau nhip 1ms
-  // Tạo bộ đếm để hạ tốc độ từ 1ms xuống đúng 10ms
-    static uint8_t tick_count = 0;
+    static uint8_t tick_count = 0U;
+
+    /* 1 ms marker pulse for the logic analyzer. */
+    DBG_SET(DBG_SYSTICK);
+    DBG_CLR(DBG_SYSTICK);
+
+    /* Prescale the 1 ms HAL tick down to the SCH_TICK_MS scheduler tick. */
     tick_count++;
-    if (tick_count >= SCH_TICK_MS) {
-        DBG_SET(DBG_SCH); DBG_CLR(DBG_SCH);       // xung danh dau nhip 5ms
+
+    if (tick_count >= SCH_TICK_MS)
+    {
+        /* Scheduler tick marker pulse. */
+        DBG_SET(DBG_SCH);
+        DBG_CLR(DBG_SCH);
+
         SCH_Update();
-        tick_count = 0;
+        tick_count = 0U;
     }
   /* USER CODE END SysTick_IRQn 1 */
 }
