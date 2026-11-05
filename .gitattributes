@@ -1,0 +1,35 @@
+# Let Git decide what is text, store it with LF in the repository, and check
+# it out with the platform's own line endings. This is what silences the
+# "LF will be replaced by CRLF" warnings on a Windows clone without touching
+# what is already stored.
+* text=auto
+
+# Sources, so the rule is explicit rather than guessed.
+*.c     text
+*.h     text
+*.cpp   text
+*.hpp   text
+*.md    text
+*.txt   text
+*.csv   text
+*.json  text
+*.yml   text
+*.yaml  text
+
+# Shell scripts must stay LF or the shebang breaks.
+*.sh    text eol=lf
+
+# STM32CubeMX project file: text, but never reformatted by anyone.
+*.ioc   text
+
+# Binary: never diffed, never converted.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.pdf   binary
+*.zip   binary
+*.bin   binary
+*.elf   binary
+*.hex   binary
+*.sal   binary

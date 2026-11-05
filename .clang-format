@@ -1,0 +1,67 @@
+# Formatting rules for the hand-written firmware of this repository.
+#
+# Scope: BMS_Slave/Core, BMS_Master/{src,include}, BMS_Slave/UnitTest.
+# Vendor trees carry their own .clang-format with DisableFormat, so running
+# clang-format over the repository never rewrites generated code.
+#
+# These rules describe the style the sources are already written in; they are
+# NOT applied in bulk. Reformatting the existing files would destroy the hand
+# aligned comment blocks and produce a diff nobody can review.
+#
+#   check one file   clang-format --dry-run --Werror path/to/file.c
+#   format one file  clang-format -i path/to/file.c
+
+Language:        Cpp
+BasedOnStyle:    LLVM
+
+# --- Indentation ---
+IndentWidth:     4
+TabWidth:        4
+UseTab:          Never
+ContinuationIndentWidth: 4
+IndentCaseLabels: true
+AccessModifierOffset: -4
+
+# --- Braces: Allman, one statement per line ---
+BreakBeforeBraces: Allman
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortCaseLabelsOnASingleLine: false
+AllowShortBlocksOnASingleLine: false
+InsertBraces:    true
+
+# --- Line width ---
+ColumnLimit:     80
+
+# --- Pointers and references bind to the name: uint8_t *p_data ---
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# --- Alignment, matching the existing sources ---
+AlignConsecutiveMacros: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: false
+AlignTrailingComments: true
+AlignEscapedNewlines: Left
+AlignOperands:   true
+
+# --- Spacing ---
+SpaceBeforeParens: ControlStatements
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
+SpaceAfterCStyleCast: false
+
+# --- Includes are grouped by hand following the project rule
+#     (own header, project headers, HAL/BSP, standard library), so
+#     clang-format must not reorder them. ---
+SortIncludes:    false
+IncludeBlocks:   Preserve
+
+# --- Comments are aligned and wrapped by hand, often around tables and
+#     equations. Rewrapping them would be destructive. ---
+ReflowComments:  false
+
+# --- Misc ---
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false

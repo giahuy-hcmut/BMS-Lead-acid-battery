@@ -1,0 +1,46 @@
+# Editor settings every editor understands, so the basics hold no matter who
+# opens the file: VS Code, Visual Studio and JetBrains read this natively,
+# Eclipse and STM32CubeIDE through the EditorConfig plugin.
+#
+# Line endings are deliberately NOT forced here. Git already normalises them
+# through .gitattributes, and forcing them in the editor as well would rewrite
+# every file on a Windows checkout.
+
+root = true
+
+[*]
+charset = utf-8
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+insert_final_newline = true
+
+[*.{c,h,cpp,hpp,cc,cxx}]
+max_line_length = 80
+
+# Shell scripts break with CRLF, so pin those.
+[*.sh]
+end_of_line = lf
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[Makefile]
+indent_style = tab
+
+# Markdown uses two trailing spaces as a hard line break.
+[*.md]
+trim_trailing_whitespace = false
+
+# Generated or imported: leave exactly as the tool wrote it.
+[BMS_Slave/Drivers/**]
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+[BMS_Slave/UnitTest/unity/**]
+trim_trailing_whitespace = false
+insert_final_newline = false
+
+[*.ioc]
+trim_trailing_whitespace = false
+insert_final_newline = false
