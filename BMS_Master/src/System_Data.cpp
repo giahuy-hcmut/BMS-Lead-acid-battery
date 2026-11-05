@@ -12,6 +12,8 @@
 
 #include "System_Data.h"
 
+#include <string.h>
+
 /**********************
  *      DEFINES
  **********************/
@@ -42,7 +44,9 @@ static SemaphoreHandle_t s_dataMutex;
 QueueHandle_t canQueue;
 
 volatile bool systemLocked               = false;
-char          faultReason[kFaultReasonLen] = "";
+/* Private: reached only through System_Set_FaultReason() and
+ * System_Get_FaultReason(), both of which take the store mutex. */
+static char s_faultReason[kFaultReasonLen] = "";
 
 /* Initialised TRUE on purpose: fail-safe. Until there is evidence that the
  * current sensor is alive, treat it as lost; CurrentSensorManager::init()
@@ -237,6 +241,49 @@ float System_TotalVoltage(const BmsPackState *snaps)
     }
 
     return total;
+}
+
+/**
+ * @brief  Publish why the relay opened.
+ * @param[in] reason  Reasons already joined by " | ".
+ * @return None.
+ */
+void System_Set_FaultReason(const char *reason)
+{
+    if (reason == NULL)
+    {
+        return;
+    }
+
+    if (xSemaphoreTake(s_dataMutex, kStoreMutexWait) == pdTRUE)
+    {
+        strncpy(s_faultReason, reason, sizeof(s_faultReason) - 1U);
+        s_faultReason[sizeof(s_faultReason) - 1U] = '\0';
+        xSemaphoreGive(s_dataMutex);
+    }
+}
+
+/**
+ * @brief  Copy out why the relay opened.
+ * @param[out] out  Destination, always left NUL terminated.
+ * @param[in]  cap  Capacity of @p out including the terminator.
+ * @return None.
+ */
+void System_Get_FaultReason(char *out, size_t cap)
+{
+    if ((out == NULL) || (cap == 0U))
+    {
+        return;
+    }
+
+    out[0] = '\0';
+
+    if (xSemaphoreTake(s_dataMutex, kStoreMutexWait) == pdTRUE)
+    {
+        strncpy(out, s_faultReason, cap - 1U);
+        out[cap - 1U] = '\0';
+        xSemaphoreGive(s_dataMutex);
+    }
 }
 
 /**

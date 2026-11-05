@@ -215,8 +215,7 @@ void LogicManager::lockSystem(const char *reason)
     /* Refresh the reason on EVERY call, not just the first: the set of
      * active faults changes over time - another slave drops out, the I2C
      * fault clears - and the web page has to show the present state. */
-    strncpy(faultReason, reason, sizeof(faultReason) - 1U);
-    faultReason[sizeof(faultReason) - 1U] = '\0';
+    System_Set_FaultReason(reason);
 
     if (!isSystemLocked_)
     {
@@ -239,7 +238,7 @@ void LogicManager::unlockSystem()
     {
         isSystemLocked_ = false;
         systemLocked    = false;
-        faultReason[0]  = '\0';
+        System_Set_FaultReason("");
         Serial.println("\n[PROTECTION] SYSTEM RECOVERED. RELAY ON.");
     }
 }

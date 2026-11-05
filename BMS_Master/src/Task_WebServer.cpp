@@ -164,9 +164,15 @@ void Task_WebServer_Run(void *pvParameters)
 String WebServerManager::buildJsonString()
 {
     BmsPackState snapPacks[kTotalPacks];
+    char         fault[kFaultReasonLen];
     String       json;
 
     System_Get_Snapshot(snapPacks);
+
+    /* Copied out under the store mutex rather than read in place: Task_Logic
+     * rewrites the buffer every protection scan, and a string is not written
+     * atomically. */
+    System_Get_FaultReason(fault, sizeof(fault));
 
     float totalV = System_TotalVoltage(snapPacks);
     float sysI   = snapPacks[0].current;
@@ -213,7 +219,7 @@ String WebServerManager::buildJsonString()
     json += "\"relayOff\":";     json += System_Get_RelayOverride() ? "true" : "false"; json += ",";
     json += "\"slavesActive\":"; json += System_Get_SlavesActive() ? "true" : "false";  json += ",";
     json += "\"locked\":";       json += systemLocked ? "true" : "false";               json += ",";
-    json += "\"fault\":\"";      json += faultReason;                                   json += "\"";
+    json += "\"fault\":\"";      json += fault;                                         json += "\"";
 
     json += "}";
 

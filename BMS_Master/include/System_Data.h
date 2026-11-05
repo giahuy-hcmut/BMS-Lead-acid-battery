@@ -103,8 +103,26 @@ extern QueueHandle_t canQueue;
  * Task_VehicleCAN. One writer, several readers, so volatile and no mutex. */
 extern volatile bool systemLocked;
 
-/** Why the relay opened; several reasons joined by " | ". */
-extern char faultReason[kFaultReasonLen];
+/**
+ * @brief  Publish why the relay opened.
+ * @param[in] reason  Reasons already joined by " | "; truncated to fit.
+ * @note   Sole caller: Task_Logic. Guarded by the store mutex, because a
+ *         string is NOT written atomically: a reader could otherwise catch
+ *         the buffer halfway through an update and show a reason spliced
+ *         from the old text and the new.
+ * @return None.
+ */
+void System_Set_FaultReason(const char *reason);
+
+/**
+ * @brief  Copy out why the relay opened.
+ * @param[out] out  Destination, always left NUL terminated.
+ * @param[in]  cap  Capacity of @p out including the terminator.
+ * @note   Returns a private copy for the same reason: the caller must not
+ *         hold a pointer into a buffer another task rewrites.
+ * @return None.
+ */
+void System_Get_FaultReason(char *out, size_t cap);
 
 /** The current sensor is gone: I2C failed to ACK kCurrentFaultLimit times in
  * a row. Written by Task_Current, read by Task_Logic and Task_VehicleCAN.
