@@ -57,9 +57,15 @@ public:
     void sendTelemetry();
 
 private:
-    uint8_t             targetMac_[6];
-    esp_now_peer_info_t peerInfo_;
-    BmsTelemetryPacket  outgoingData_;
+    uint8_t targetMac_[6];
+
+    /** Value-initialised, which matters: init() only fills peer_addr,
+     * channel and encrypt, and esp_now_add_peer() reads the other fields
+     * too - ifidx among them. Left indeterminate, the peer was registered
+     * against whatever happened to be on the stack. */
+    esp_now_peer_info_t peerInfo_{};
+
+    BmsTelemetryPacket outgoingData_;
 };
 
 /**********************
