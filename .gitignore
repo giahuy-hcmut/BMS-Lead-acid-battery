@@ -11,3 +11,7 @@ Debug/
 
 # Serial monitor capture (du lieu do, khong phai ma nguon)
 logs/
+
+# STM32CubeIDE rewrites this on every build and its env-hash differs per
+# machine, so it is noise in every diff.
+BMS_Slave/.settings/language.settings.xml
