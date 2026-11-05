@@ -1,30 +1,79 @@
-/*
- * Task_Temperature.c
- *
- *  Created on: Mar 3, 2026
- *      Author: User
+/**
+ * @file      Task_Temperature.c
+ * @author    Do Dang Gia Huy
+ * @brief     Split-phase DS18B20 read: publish, then start the next convert.
+ * @date      2026-03-03
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
  */
 
-#include "ds18b20.h"
-#include "Shared_Data.h"
-#include "Board_Config.h"   // THRESHOLD_OVER_TEMP
+/**********************
+ *      INCLUDES
+ **********************/
+
 #include "Task_Temperature.h"
+
+#include "Board_Config.h"   /* THRESHOLD_OVER_TEMP */
 #include "Debug_Pins.h"
+#include "Shared_Data.h"
+#include "ds18b20.h"
+
+/**********************
+ *      DEFINES
+ **********************/
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/**********************
+ *      MACROS
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Read the previous conversion, publish it, and start the next one.
+ * @return None.
+ */
 void Task_Temperature_Run(void)
 {
-    DBG_SET(DBG_TEMP);          // bat den: task Temperature bat dau chay
-    // Đọc kết quả của nhịp đo trước
-    float temp = DS18B20_Read_Temperature();
+    float   temp_c;
+    uint8_t faults = 0U;
 
-    // Gán vào kho gửi CAN. Doc loi (-127) thi KHONG goi Set: gia tri va co
-    // loi cu duoc giu nguyen - dung nhu hanh vi truoc day.
-    if (temp != -127.0) {
-        uint8_t faults = 0;
-        if (temp > THRESHOLD_OVER_TEMP) { faults |= ERROR_OVER_TEMP; }
-        BMS_Data_SetTemp(temp, faults);
+    DBG_SET(DBG_TEMP);
+
+    /* Collect the result of the conversion started one period ago. */
+    temp_c = DS18B20_Read_Temperature();
+
+    /* On a read error, do NOT publish: the previous value and its fault bit
+     * are left untouched, which is the behaviour this task always had. */
+    if (temp_c != DS18B20_TEMP_ERROR_C)
+    {
+        if (temp_c > THRESHOLD_OVER_TEMP)
+        {
+            faults |= ERROR_OVER_TEMP;
+        }
+
+        BMS_Data_SetTemp(temp_c, faults);
     }
 
-    // Ra lệnh đo tiếp (STM32 sẽ rảnh tay đi làm việc khác trong 750ms tới)
+    /* Start the next conversion and leave. The sensor needs up to 750 ms,
+     * which the CPU spends running the other tasks instead of waiting. */
     DS18B20_Start_Conversion();
-    DBG_CLR(DBG_TEMP);          // tat den: task Temperature ket thuc
+
+    DBG_CLR(DBG_TEMP);
 }
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/

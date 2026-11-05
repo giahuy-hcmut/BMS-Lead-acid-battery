@@ -1,73 +1,143 @@
-/*
- * Task_Voltage.c
- *
- *  Created on: Feb 10, 2026
- *      Author: User
+/**
+ * @file      Task_Voltage.c
+ * @author    Do Dang Gia Huy
+ * @brief     Voltage acquisition with internal-resistance compensated UVP.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
  */
 
+/**********************
+ *      INCLUDES
+ **********************/
 
-/* Task_Voltage.c */
 #include "Task_Voltage.h"
-#include "Shared_Data.h"
-#include "Board_Config.h"   // THRESHOLD_UNDER_VOLT / THRESHOLD_OVER_VOLT
-#include "BMS_ADC.h"
-#include "BMS_CAN.h"        // BMS_CAN_GetLastRxTick - dong con tuoi khong
-#include "SOC_Kalman.h"     // KF_R0_NOM - MOT nguon cho con so 13.5 mOhm
-#include "Debug_Pins.h"
-#include "main.h"           // HAL_GetTick
 
-// Dong cu hon nguong nay -> KHONG bu. Cung con so voi CURRENT_TIMEOUT_MS cua
-// Task_SOC: master phat 0x100 moi 5 ms nen 100 ms = 20 frame lien tiep bi mat.
+#include "BMS_ADC.h"
+#include "BMS_CAN.h"        /* BMS_CAN_GetLastRxTick - is the current fresh? */
+#include "Board_Config.h"   /* THRESHOLD_UNDER_VOLT / THRESHOLD_OVER_VOLT   */
+#include "Debug_Pins.h"
+#include "SOC_Kalman.h"     /* KF_R0_NOM - ONE source for the 13.5 mOhm      */
+#include "Shared_Data.h"
+
+#include "main.h"           /* HAL_GetTick */
+
+/**********************
+ *      DEFINES
+ **********************/
+
+/* A current sample older than this is NOT used for compensation. Same value
+ * as CURRENT_TIMEOUT_MS in Task_SOC: the master sends 0x100 every 5 ms, so
+ * 100 ms means 20 consecutive frames were lost. */
 #define UVP_CURRENT_TIMEOUT_MS   100U
 
-// Chan do lon phan bu. O chieu xa phan bu LAM TANG v_uvp, nen mot gia tri dong
-// RAC co the che mat UVP THAT - do moi la huong nguy hiem. 150 A * 13.5 mOhm
-// ~ 2.03 V du cho he 100 A (4 motor x 25 A) ma con thua bien.
+/* Ceiling on the compensation term. In the far direction the term RAISES
+ * v_uvp, so a garbage current reading could MASK a real under-voltage, and
+ * that is the dangerous direction. 150 A * 13.5 mOhm is about 2.03 V, which
+ * already covers the 100 A system (4 motors x 25 A) with margin. */
 #define UVP_MAX_COMP_V           2.03f
 
-void Task_Voltage_Run(void) {
-    DBG_SET(DBG_VOLT);          // bat den: task Voltage bat dau chay
-    // 1. Gọi Driver để đo (Đã có sẵn lấy mẫu 100 lần và tính hiệu chỉnh)
-    float vol = BMS_ADC_GetVoltage();
+/**********************
+ *      TYPEDEFS
+ **********************/
 
-    /* 2. UVP so voi ap DA BU NOI TRO, khong phai ap tho.
-     *
-     * THRESHOLD_UNDER_VOLT = 10.50 V la ap LUC NGHI (1.75 V/cell, datasheet).
-     * Duoi tai, ap dau cuc sut I*R0 = 1.35 V o 100 A, nen mot binh dang nghi
-     * 11.85 V (~17% SOC, con dung duoc) doc ra dung 10.50 V -> NGAT OAN.
-     *
-     * Chi bu khi dong con TUOI. Dong cu hoac khong co thi bu sai, va bu sai o
-     * chieu xa se CHE MAT UVP that; khong bu thi chi trip SOM hon = an toan,
-     * nen do la mac dinh khi mat dong.
-     *
-     * V_RC (phan cuc) KHONG duoc bu vi chi co R0 tuc thoi, nen v_uvp van thap
-     * hon OCV that mot chut khi xa keo dai -> tiep tuc nghieng ve an toan.
-     *
-     * KHONG bu nhiet cho R0: lanh thi R0 that LON hon nen bu it hon thuc te,
-     * lai trip som -> an toan, ma code don gian hon. */
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/**********************
+ *      MACROS
+ **********************/
+
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Measure the terminal voltage, run the voltage checks and publish.
+ * @return None.
+ */
+void Task_Voltage_Run(void)
+{
     BMS_Snapshot_t snap;
+    float          v_raw;
+    float          v_uvp;
+    float          comp;
+    uint8_t        faults = 0U;
+
+    DBG_SET(DBG_VOLT);
+
+    /* 1. Measure. The driver already averages 100 samples and calibrates. */
+    v_raw = BMS_ADC_GetVoltage();
+
+    /* 2. UVP compares against the voltage COMPENSATED for internal
+     *    resistance, not the raw reading.
+     *
+     * THRESHOLD_UNDER_VOLT = 10.50 V is a RESTING voltage (1.75 V/cell, from
+     * the datasheet). Under load the terminal voltage sags by I*R0 = 1.35 V
+     * at 100 A, so a battery resting at 11.85 V (about 17% SOC and still
+     * usable) reads exactly 10.50 V and would trip for nothing.
+     *
+     * Compensate only while the current is FRESH. A stale or missing current
+     * compensates wrongly, and in the far direction that MASKS a real
+     * under-voltage; not compensating at all only trips EARLIER, which is
+     * safe, so that is the default when the current is lost.
+     *
+     * The polarisation term V_RC is deliberately NOT compensated, only the
+     * instantaneous R0, so v_uvp stays slightly below the true OCV during a
+     * long discharge - again erring towards safety.
+     *
+     * R0 is NOT temperature compensated either: in the cold the real R0 is
+     * LARGER, so the correction is smaller than reality and the trip comes
+     * earlier. Safe, and simpler. */
     BMS_Data_GetSnapshot(&snap);
 
-    float v_uvp = vol;          /* mac dinh: ap tho, khong bu */
-    if ((HAL_GetTick() - BMS_CAN_GetLastRxTick()) <= UVP_CURRENT_TIMEOUT_MS) {
-        float comp = snap.current_a * KF_R0_NOM;     /* I > 0 = xa -> cong lai */
-        if (comp >  UVP_MAX_COMP_V) { comp =  UVP_MAX_COMP_V; }
-        if (comp < -UVP_MAX_COMP_V) { comp = -UVP_MAX_COMP_V; }
-        v_uvp = vol + comp;
+    v_uvp = v_raw;      /* default: raw voltage, no compensation */
+
+    if ((HAL_GetTick() - BMS_CAN_GetLastRxTick()) <= UVP_CURRENT_TIMEOUT_MS)
+    {
+        comp = snap.current_a * KF_R0_NOM;      /* I > 0 = discharge -> add */
+
+        if (comp > UVP_MAX_COMP_V)
+        {
+            comp = UVP_MAX_COMP_V;
+        }
+
+        if (comp < -UVP_MAX_COMP_V)
+        {
+            comp = -UVP_MAX_COMP_V;
+        }
+
+        v_uvp = v_raw + comp;
     }
 
-    /* `faults` la bien local, bat dau tu 0 moi lan chay, nen khong con can
-     * nhanh `else` de xoa bit nhu truoc.
-     * OVP dung ap THO: 15.00 V la gioi han cua chinh ap DAU CUC (qua nguong do
-     * la hai binh, bat ke sut/nang ap den tu dong nao). */
-    uint8_t faults = 0;
-    if (v_uvp < THRESHOLD_UNDER_VOLT) { faults |= ERROR_UNDER_VOLT; }
-    if (vol   > THRESHOLD_OVER_VOLT)  { faults |= ERROR_OVER_VOLT;  }
+    /* `faults` is a local that starts at 0 on every run, so there is no need
+     * for the `else` branches that used to clear the bits.
+     * OVP uses the RAW voltage: 15.00 V is a limit on the TERMINAL voltage
+     * itself, whatever current the sag or rise comes from. */
+    if (v_uvp < THRESHOLD_UNDER_VOLT)
+    {
+        faults |= ERROR_UNDER_VOLT;
+    }
 
-    /* 3. Nạp vào kho qua API. Task nay chi so huu 2 bit tren, khong the
-     *    cham vao nhiet do / dong dien / SOC cua chu khac.
-     *    Bao cao `vol` - ap ĐO THAT - chu khong phai v_uvp: web va master phai
-     *    thay so do that, chi RIENG quyet dinh loi moi dung so da bu. */
-    BMS_Data_SetVoltage(vol, faults);
-    DBG_CLR(DBG_VOLT);          // tat den: task Voltage ket thuc
+    if (v_raw > THRESHOLD_OVER_VOLT)
+    {
+        faults |= ERROR_OVER_VOLT;
+    }
+
+    /* 3. Publish through the store API. This task owns those two bits only
+     *    and cannot touch another producer's temperature, current or SOC.
+     *    It reports v_raw, the MEASURED voltage, not v_uvp: the web page and
+     *    the master must see the real reading, and only the fault decision
+     *    uses the compensated one. */
+    BMS_Data_SetVoltage(v_raw, faults);
+
+    DBG_CLR(DBG_VOLT);
 }
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/

@@ -1,14 +1,48 @@
-/*
- * Task_Voltage.h
- *
- *  Created on: Feb 10, 2026
- *      Author: User
+/**
+ * @file      Task_Voltage.h
+ * @author    Do Dang Gia Huy
+ * @brief     Periodic battery voltage measurement and voltage protection.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
  */
 
-#ifndef INC_TASK_VOLTAGE_H_
-#define INC_TASK_VOLTAGE_H_
+#ifndef TASK_VOLTAGE_H_
+#define TASK_VOLTAGE_H_
 
-// Phải có dòng này thì main.c mới biết hàm này tồn tại
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/**********************
+ *      INCLUDES
+ *********************/
+
+/**********************
+ *      DEFINES
+ *********************/
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ * GLOBAL PROTOTYPES
+ **********************/
+
+/**
+ * @brief  Measure the terminal voltage, run the voltage checks and publish.
+ * @note   Registered with the scheduler at a 50 ms period. Blocks for about
+ *         0.7 ms while averaging the ADC samples.
+ * @return None.
+ */
 void Task_Voltage_Run(void);
 
-#endif /* INC_TASK_VOLTAGE_H_ */
+/**********************
+ *      MACROS
+ **********************/
+
+#ifdef __cplusplus
+} /*extern "C"*/
+#endif
+
+#endif /*TASK_VOLTAGE_H_*/
