@@ -59,9 +59,19 @@ void CAN_Manager::sendCurrentFrame(float current_a) {
 
     int16_t raw = (int16_t)lroundf(current_a * 100.0f);
 
+    /* `= {}` zero-fills data[], so bytes 2-7 go out as 0x00 without being
+     * written again below. */
     twai_message_t msg = {};
     msg.identifier = CAN_MASTER_ID;
-    msg.data_length_code = 2;                        /* was 0 - empty heartbeat */
+    /* DLC 8 on BOTH directions, the J1939 convention: a fixed frame size means
+     * adding a field later only fills a reserved byte instead of changing the
+     * DLC, which would break every receiver that tests it. Bytes 2-7 are
+     * RESERVED and must stay 0x00 until a field is defined here AND in
+     * PROJECT_BRIEF section 1.
+     * Cost: 75 -> 135 bits worst case (stuffing included), 150 -> 270 us at
+     * 500 kbps. At a 5 ms period that is 3.0% -> 5.4% bus load, and the
+     * blocking time other nodes see grows by the same 120 us. */
+    msg.data_length_code = 8;                        /* was 2, and 0 before that */
     msg.data[0] = (uint8_t)((raw >> 8) & 0xFF);      /* MSB first, matching   */
     msg.data[1] = (uint8_t)(raw & 0xFF);             /* bytes 2-3 of a slave  */
     twai_transmit(&msg, pdMS_TO_TICKS(CAN_TX_TIMEOUT_MS));
