@@ -1,230 +1,339 @@
-/*
- * Scheduler.c
- *
- *  Created on: Feb 10, 2026
- *      Author: User
+/**
+ * @file      Scheduler.c
+ * @author    Do Dang Gia Huy
+ * @brief     Delta-list bookkeeping for the cooperative scheduler.
+ * @date      2026-02-10
+ * @copyright Copyright (c) 2026 Do Dang Gia Huy. All rights reserved.
  */
 
+/**********************
+ *      INCLUDES
+ **********************/
 
-/* Scheduler.c */
 #include "Scheduler.h"
 
-/* `volatile`: SCH_Update() runs in the SysTick ISR and writes Delay/RunMe
+#include <stddef.h>         /* NULL */
+
+/**********************
+ *      DEFINES
+ **********************/
+
+/** Return values of SCH_Delete_Task(). */
+#define SCH_DELETE_OK       1U
+#define SCH_DELETE_FAIL     0U
+
+/**********************
+ *      TYPEDEFS
+ **********************/
+
+/**********************
+ *  STATIC PROTOTYPES
+ **********************/
+
+/**********************
+ *  STATIC VARIABLES
+ **********************/
+
+/* `volatile`: SCH_Update() runs in the SysTick ISR and writes delay/run_me
  * while SCH_Dispatch() reads them from the main loop. Without volatile the
- * compiler may keep RunMe in a register across the check, and Dispatch then
+ * compiler may keep run_me in a register across the check, and Dispatch then
  * never sees the ISR's update - the scheduler simply stops. At -O0 this is
  * masked; a release build (-Os) is free to break it.
  * `static`: nothing outside this file touches the table. */
-static volatile sTask SCH_tasks_G[SCH_MAX_TASKS];
-static volatile uint8_t Head_Index = NO_TASK_ID; // Đầu danh sách
+static volatile st_task_t s_sch_tasks[SCH_MAX_TASKS];
+
+/** Index of the first entry of the delta list. */
+static volatile uint8_t s_head_index = NO_TASK_ID;
 
 /* Number of times a task was already pending again when it got dispatched,
- * i.e. a deadline was missed. The surplus RunMe cannot be recovered (the
- * re-armed instance starts at RunMe = 0), so at least count the event.
+ * i.e. a deadline was missed. The surplus run_me cannot be recovered (the
+ * re-armed instance starts at run_me = 0), so at least count the event.
  * Watch SCH_GetOverrunCount() in Live Expressions: it must stay 0. */
-static volatile uint16_t s_overrun_count = 0;
+static volatile uint16_t s_overrun_count = 0U;
 
-uint16_t SCH_GetOverrunCount(void) {
-    return s_overrun_count;
-}
+/**********************
+ *      MACROS
+ **********************/
 
-// Xóa trắng danh sách khi khởi động
-void SCH_Init(void) {
+/**********************
+ *   GLOBAL FUNCTIONS
+ **********************/
+
+/**
+ * @brief  Empty the task table and the ready list.
+ * @return None.
+ */
+void SCH_Init(void)
+{
     uint8_t i;
-    for (i = 0; i < SCH_MAX_TASKS; i++) {
-        SCH_Delete_Task(i);
+
+    for (i = 0U; i < SCH_MAX_TASKS; i++)
+    {
+        (void)SCH_Delete_Task(i);
     }
-    Head_Index = NO_TASK_ID;
+
+    s_head_index = NO_TASK_ID;
 }
 
-// Hàm này chạy trong ngắt: CỰC NHANH (O(1))
-void SCH_Update(void) {
-    if (Head_Index != NO_TASK_ID) {
-        // Chỉ trừ Task đầu tiên
-        if (SCH_tasks_G[Head_Index].Delay > 0) {
-            SCH_tasks_G[Head_Index].Delay--;
-        }
+/**
+ * @brief  Advance the delta list by one tick.
+ * @note   Runs in the SysTick interrupt, so it stays short.
+ * @return None.
+ */
+void SCH_Update(void)
+{
+    uint8_t idx;
 
-        // Nếu Task đầu đếm về 0 -> Báo chạy cho CẢ NHÓM cùng deadline.
-        // Trong delta-list, node sau có Delay == 0 nghĩa là tới hạn cùng lúc
-        // với node trước. Đi dọc chuỗi bật RunMe cho hết nhóm này, để chúng
-        // chạy TRONG cùng một nhịp thay vì bị đẩy sang các nhịp sau (chỉ nhả
-        // 1 task/nhịp là nguyên nhân các task chậm ~11% do quá tải). Dừng ở
-        // node đầu tiên có Delay > 0.
-        //
-        // Nếu đây là Task chạy 1 lần (Delay=0, Period=0), nó vẫn nằm ở Head
-        // chờ Dispatch xử lý.
-        if (SCH_tasks_G[Head_Index].Delay == 0) {
-            uint8_t idx = Head_Index;
-            while ((idx != NO_TASK_ID) && (SCH_tasks_G[idx].Delay == 0)) {
-                SCH_tasks_G[idx].RunMe += 1;
-                idx = SCH_tasks_G[idx].NextTaskIndex;
-            }
+    if (s_head_index == NO_TASK_ID)
+    {
+        return;
+    }
+
+    /* Only the head is decremented: every other delay is relative to it. */
+    if (s_sch_tasks[s_head_index].delay > 0U)
+    {
+        s_sch_tasks[s_head_index].delay--;
+    }
+
+    /* Head reached zero -> release the WHOLE group sharing that deadline.
+     * In a delta list a following entry with delay == 0 falls due at the same
+     * instant as its predecessor, so walk the chain and raise run_me for all
+     * of them. Releasing only one task per tick was what made the lower
+     * priority tasks run about 11% late under load. Stop at the first entry
+     * with delay > 0.
+     *
+     * A one-shot task (delay == 0, period == 0) simply stays at the head
+     * until SCH_Dispatch() picks it up. */
+    if (s_sch_tasks[s_head_index].delay == 0U)
+    {
+        idx = s_head_index;
+        while ((idx != NO_TASK_ID) && (s_sch_tasks[idx].delay == 0U))
+        {
+            s_sch_tasks[idx].run_me += 1U;
+            idx = s_sch_tasks[idx].next_index;
         }
     }
 }
 
-// Hàm thêm Task: Sắp xếp chèn (Insertion Sort) vào danh sách Delta
-uint8_t SCH_Add_Task(void (*pFunction)(void), uint32_t DELAY_MS, uint32_t PERIOD_MS, uint8_t Priority) {
-    uint8_t New_Index = 0;
+/**
+ * @brief  Insert a task into the delta list.
+ * @param  p_function  Task entry point.
+ * @param  delay_ms    Delay before the first release, in milliseconds.
+ * @param  period_ms   Repeat period in milliseconds, 0 for a one-shot task.
+ * @param  priority    Tie-break on an EQUAL deadline, higher runs first.
+ * @return Slot index, or NO_TASK_ID on refusal.
+ */
+uint8_t SCH_Add_Task(void (*p_function)(void), uint32_t delay_ms, uint32_t period_ms, uint8_t priority)
+{
+    uint8_t  new_index = 0U;
+    uint8_t  current;
+    uint8_t  prev;
+    uint32_t delay_ticks;
     uint32_t primask;
 
     /* Both arguments are converted by integer division below, so anything
      * that is not a whole number of ticks gets silently truncated:
-     * PERIOD_MS = 5 with SCH_TICK_MS = 10 yields Period = 0, which Dispatch
+     * period_ms = 5 with SCH_TICK_MS = 10 yields period = 0, which Dispatch
      * treats as a one-shot and deletes. Refuse it loudly instead. */
-    if (((PERIOD_MS % SCH_TICK_MS) != 0U) || ((DELAY_MS % SCH_TICK_MS) != 0U)) {
+    if (((period_ms % SCH_TICK_MS) != 0U) || ((delay_ms % SCH_TICK_MS) != 0U))
+    {
         return NO_TASK_ID;
     }
 
-    /* 1. Tìm chỗ trống trong mảng.
-     * Bound check FIRST: the old order dereferenced SCH_tasks_G[New_Index]
-     * before testing New_Index < SCH_MAX_TASKS, so a full table read one
+    /* 1. Find a free slot.
+     * Bound check FIRST: the old order dereferenced s_sch_tasks[new_index]
+     * before testing new_index < SCH_MAX_TASKS, so a full table read one
      * element past the end of the array. */
-    while ((New_Index < SCH_MAX_TASKS) && (SCH_tasks_G[New_Index].pTask != 0)) {
-        New_Index++;
+    while ((new_index < SCH_MAX_TASKS) && (s_sch_tasks[new_index].p_task != NULL))
+    {
+        new_index++;
     }
-    if (New_Index == SCH_MAX_TASKS) return NO_TASK_ID; // Hết chỗ
 
-    // 2. Tính toán Ticks
-    // Lưu ý: Cộng thêm 1 để tránh lỗi làm tròn nếu gọi ngay sát mép ngắt
-    uint32_t delay_ticks = DELAY_MS / SCH_TICK_MS;
+    if (new_index == SCH_MAX_TASKS)
+    {
+        return NO_TASK_ID;      /* table full */
+    }
 
-    SCH_tasks_G[New_Index].pTask = pFunction;
-    SCH_tasks_G[New_Index].Period = PERIOD_MS / SCH_TICK_MS;
-    SCH_tasks_G[New_Index].RunMe = 0;
-    SCH_tasks_G[New_Index].Priority = Priority;
+    /* 2. Convert to ticks. */
+    delay_ticks = delay_ms / SCH_TICK_MS;
 
-    // 3. THUẬT TOÁN CHÈN (CRITICAL SECTION BẮT ĐẦU)
-    // Phải khóa ngắt để tránh SCH_Update làm sai lệch Delay khi đang tính toán
-    // Save/restore PRIMASK instead of __enable_irq(): this function is called
-    // from SCH_Dispatch(), so re-enabling unconditionally would break any
-    // critical section the caller might be holding.
+    s_sch_tasks[new_index].p_task   = p_function;
+    s_sch_tasks[new_index].period   = period_ms / SCH_TICK_MS;
+    s_sch_tasks[new_index].run_me   = 0U;
+    s_sch_tasks[new_index].priority = priority;
+
+    /* 3. Insertion, CRITICAL SECTION.
+     * Interrupts must be masked so SCH_Update() cannot decrement a delay
+     * halfway through the walk and leave the chain inconsistent.
+     * Save/restore PRIMASK instead of __enable_irq(): this function is called
+     * from SCH_Dispatch(), so re-enabling unconditionally would break any
+     * critical section the caller might be holding. */
     primask = __get_PRIMASK();
     __disable_irq();
 
-    // Trường hợp 1: Danh sách rỗng
-    if (Head_Index == NO_TASK_ID) {
-        Head_Index = New_Index;
-        SCH_tasks_G[New_Index].Delay = delay_ticks;
-        SCH_tasks_G[New_Index].NextTaskIndex = NO_TASK_ID;
+    if (s_head_index == NO_TASK_ID)
+    {
+        /* Case 1: the list is empty. */
+        s_head_index                      = new_index;
+        s_sch_tasks[new_index].delay      = delay_ticks;
+        s_sch_tasks[new_index].next_index = NO_TASK_ID;
     }
-    // Trường hợp 2: Chèn vào ĐẦU danh sách.
-    // Sớm hơn head, HOẶC trùng deadline với head nhưng ưu tiên cao hơn.
-    else if ((delay_ticks <  SCH_tasks_G[Head_Index].Delay) ||
-             ((delay_ticks == SCH_tasks_G[Head_Index].Delay) &&
-              (Priority     >  SCH_tasks_G[Head_Index].Priority))) {
-        SCH_tasks_G[Head_Index].Delay -= delay_ticks; // Trừ bù cho Task cũ
+    else if ((delay_ticks < s_sch_tasks[s_head_index].delay) ||
+             ((delay_ticks == s_sch_tasks[s_head_index].delay) &&
+              (priority > s_sch_tasks[s_head_index].priority)))
+    {
+        /* Case 2: insert at the HEAD - either due earlier than the current
+         * head, or due at the same instant but with a higher priority. */
+        s_sch_tasks[s_head_index].delay -= delay_ticks;     /* keep the delta */
 
-        SCH_tasks_G[New_Index].NextTaskIndex = Head_Index;
-        SCH_tasks_G[New_Index].Delay = delay_ticks;
-        Head_Index = New_Index;
+        s_sch_tasks[new_index].next_index = s_head_index;
+        s_sch_tasks[new_index].delay      = delay_ticks;
+        s_head_index                      = new_index;
     }
-    // Trường hợp 3: Chèn vào GIỮA hoặc CUỐI
-    else {
-        uint8_t current = Head_Index;
-        uint8_t prev = NO_TASK_ID;
+    else
+    {
+        /* Case 3: insert in the MIDDLE or at the TAIL.
+         * The head comparison above already failed, so the first loop pass
+         * always advances and prev can never stay NO_TASK_ID. */
+        current = s_head_index;
+        prev    = NO_TASK_ID;
 
-        // Duyệt tìm vị trí (Trừ dần delay_ticks). Chèn trước 'current' nếu tới
-        // hạn sớm hơn, hoặc trùng deadline nhưng ưu tiên cao hơn 'current'.
-        while(current != NO_TASK_ID) {
-            if (delay_ticks < SCH_tasks_G[current].Delay) {
-                break; // Tìm thấy chỗ chèn trước 'current'
+        while (current != NO_TASK_ID)
+        {
+            if (delay_ticks < s_sch_tasks[current].delay)
+            {
+                break;      /* due before 'current' */
             }
-            if ((delay_ticks == SCH_tasks_G[current].Delay) &&
-                (Priority     >  SCH_tasks_G[current].Priority)) {
-                break; // Trùng giờ, ưu tiên cao hơn -> chèn trước
+
+            if ((delay_ticks == s_sch_tasks[current].delay) &&
+                (priority > s_sch_tasks[current].priority))
+            {
+                break;      /* same instant, higher priority -> go first */
             }
-            delay_ticks -= SCH_tasks_G[current].Delay;
-            prev = current;
-            current = SCH_tasks_G[current].NextTaskIndex;
+
+            delay_ticks -= s_sch_tasks[current].delay;
+            prev    = current;
+            current = s_sch_tasks[current].next_index;
         }
 
-        // Chèn vào sau 'prev'
-        SCH_tasks_G[New_Index].Delay = delay_ticks;
-        SCH_tasks_G[New_Index].NextTaskIndex = current;
-        SCH_tasks_G[prev].NextTaskIndex = New_Index;
+        /* Link in after 'prev'. */
+        s_sch_tasks[new_index].delay      = delay_ticks;
+        s_sch_tasks[new_index].next_index = current;
+        s_sch_tasks[prev].next_index      = new_index;
 
-        // Nếu không phải chèn cuối, update lại delay của thằng phía sau
-        if (current != NO_TASK_ID) {
-            SCH_tasks_G[current].Delay -= delay_ticks;
+        /* Unless this is the new tail, the successor's delta shrinks by the
+         * amount now consumed by the new entry. */
+        if (current != NO_TASK_ID)
+        {
+            s_sch_tasks[current].delay -= delay_ticks;
         }
     }
-
-    __set_PRIMASK(primask); // Mở lại ngắt (CRITICAL SECTION KẾT THÚC)
-
-    return New_Index;
-}
-
-/* Hàm xóa Task (Để tái sử dụng slot)
- *
- * WARNING: this does NOT unlink the slot from the delta list - the previous
- * node's NextTaskIndex is left pointing at it. Only call it for a node that
- * has already been popped off Head (which is what SCH_Dispatch does).
- * Calling it on a node in the middle of the list corrupts the chain. */
-uint8_t SCH_Delete_Task(uint8_t taskIndex) {
-    uint32_t primask;
-
-    if (taskIndex >= SCH_MAX_TASKS || SCH_tasks_G[taskIndex].pTask == 0) return 0;
-
-    primask = __get_PRIMASK(); // Khóa ngắt an toàn
-    __disable_irq();
-
-    SCH_tasks_G[taskIndex].pTask = 0;
-    SCH_tasks_G[taskIndex].Delay = 0;
-    SCH_tasks_G[taskIndex].Period = 0;
-    SCH_tasks_G[taskIndex].RunMe = 0;
-    SCH_tasks_G[taskIndex].Priority = 0;
-    SCH_tasks_G[taskIndex].NextTaskIndex = NO_TASK_ID;  /* leave no stale link */
 
     __set_PRIMASK(primask);
-    return 1;
+
+    return new_index;
 }
 
-// Hàm Dispatch (Chạy trong while(1))
-void SCH_Dispatch(void) {
-    // Chỉ kiểm tra Head (Vì danh sách đã sắp xếp, ai Delay=0 chắc chắn nằm đầu)
-    if (Head_Index != NO_TASK_ID) {
+/**
+ * @brief  Release a task slot.
+ * @param  task_index  Slot to release.
+ * @warning Does NOT unlink the slot from the delta list; see Scheduler.h.
+ * @return SCH_DELETE_OK when the slot was in use, SCH_DELETE_FAIL otherwise.
+ */
+uint8_t SCH_Delete_Task(uint8_t task_index)
+{
+    uint32_t primask;
 
-        if (SCH_tasks_G[Head_Index].RunMe > 0) {
+    if ((task_index >= SCH_MAX_TASKS) || (s_sch_tasks[task_index].p_task == NULL))
+    {
+        return SCH_DELETE_FAIL;
+    }
 
-            // 1. Lưu thông tin Task cần chạy
-            void (*pRunTask)(void) = SCH_tasks_G[Head_Index].pTask;
-            uint32_t period    = SCH_tasks_G[Head_Index].Period;
-            uint8_t  prio      = SCH_tasks_G[Head_Index].Priority;
-            uint8_t current_id = Head_Index;
-            uint32_t primask;
+    primask = __get_PRIMASK();
+    __disable_irq();
 
-            /* 2. Giảm RunMe VÀ tách khỏi Head trong CÙNG một critical section.
-             *    `RunMe -= 1` is a read-modify-write (LDRB / SUB / STRB); if
-             *    SCH_Update() lands between those instructions its own
-             *    `RunMe += 1` is overwritten and a deadline vanishes. */
-            primask = __get_PRIMASK();
-            __disable_irq();
-            if (SCH_tasks_G[current_id].RunMe > 1U) {
-                s_overrun_count++;      /* deadline missed - surplus is lost */
-            }
-            SCH_tasks_G[current_id].RunMe -= 1;
-            // Nếu Task kế tiếp trở thành Head, Delay của nó đã đúng nhờ thuật toán Delta
-            Head_Index = SCH_tasks_G[current_id].NextTaskIndex;
-            __set_PRIMASK(primask);
+    s_sch_tasks[task_index].p_task     = NULL;
+    s_sch_tasks[task_index].delay      = 0U;
+    s_sch_tasks[task_index].period     = 0U;
+    s_sch_tasks[task_index].run_me     = 0U;
+    s_sch_tasks[task_index].priority   = 0U;
+    s_sch_tasks[task_index].next_index = NO_TASK_ID;    /* leave no stale link */
 
-            /* 3. Nạp lại lịch TRƯỚC khi chạy thân task.
-             *    Previously SCH_Add_Task ran after pRunTask(), so the period
-             *    was measured from when the task FINISHED. A task overrunning
-             *    one tick slipped, and the slip became the new baseline, so
-             *    the error accumulated in SCH_TICK_MS steps.
-             *    Delete first so Add_Task may reuse this very slot; pRunTask
-             *    was already copied out above, so clearing pTask is safe. */
-            SCH_Delete_Task(current_id);
-            if (period > 0) {
-                SCH_Add_Task(pRunTask, period * SCH_TICK_MS, period * SCH_TICK_MS, prio);
-            }
+    __set_PRIMASK(primask);
 
-            // 4. CHẠY TASK
-            if (pRunTask != 0) {
-                pRunTask();
-            }
-        }
+    return SCH_DELETE_OK;
+}
+
+/**
+ * @brief  Run at most one ready task, then re-arm it.
+ * @return None.
+ */
+void SCH_Dispatch(void)
+{
+    void (*p_run_task)(void);
+    uint32_t period;
+    uint32_t primask;
+    uint8_t  priority;
+    uint8_t  current_id;
+
+    /* Only the head needs checking: the list is ordered, so whatever is due
+     * is at the front. */
+    if (s_head_index == NO_TASK_ID)
+    {
+        return;
+    }
+
+    if (s_sch_tasks[s_head_index].run_me == 0U)
+    {
+        return;
+    }
+
+    /* 1. Copy out what is needed before the slot can be reused. */
+    p_run_task = s_sch_tasks[s_head_index].p_task;
+    period     = s_sch_tasks[s_head_index].period;
+    priority   = s_sch_tasks[s_head_index].priority;
+    current_id = s_head_index;
+
+    /* 2. Decrement run_me AND unlink from the head in ONE critical section.
+     *    `run_me -= 1` is a read-modify-write (LDRB / SUB / STRB); if
+     *    SCH_Update() lands between those instructions its own `run_me += 1`
+     *    is overwritten and a deadline vanishes. */
+    primask = __get_PRIMASK();
+    __disable_irq();
+
+    if (s_sch_tasks[current_id].run_me > 1U)
+    {
+        s_overrun_count++;      /* deadline missed - the surplus is lost */
+    }
+
+    s_sch_tasks[current_id].run_me -= 1U;
+
+    /* The successor becomes the head; its delta is already correct. */
+    s_head_index = s_sch_tasks[current_id].next_index;
+
+    __set_PRIMASK(primask);
+
+    /* 3. Re-arm BEFORE running the body.
+     *    SCH_Add_Task() used to run after p_run_task(), so the period was
+     *    measured from when the task FINISHED. A task overrunning by one tick
+     *    slipped, and the slip became the new baseline, so the error
+     *    accumulated in SCH_TICK_MS steps.
+     *    Delete first so Add_Task may reuse this very slot; p_run_task was
+     *    already copied out above, so clearing p_task is safe. */
+    (void)SCH_Delete_Task(current_id);
+
+    if (period > 0U)
+    {
+        (void)SCH_Add_Task(p_run_task, period * SCH_TICK_MS, period * SCH_TICK_MS, priority);
+    }
+
+    /* 4. Run the task. */
+    if (p_run_task != NULL)
+    {
+        p_run_task();
     }
 }
+
+/**********************
+ *   STATIC FUNCTIONS
+ **********************/
