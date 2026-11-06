@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: [main, ver2]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  host-checks:
+    name: Unit tests and host type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain versions
+        run: |
+          gcc --version | head -1
+          gcov --version | head -1
+
+      - name: Kalman unit tests with coverage
+        working-directory: BMS_Slave/UnitTest
+        run: |
+          chmod +x run.sh
+          ./run.sh cov
+
+      # Type-checks the STM32 sources on x86: -fsyntax-only skips code
+      # generation, so the ARM intrinsics in CMSIS never have to be emitted.
+      # syscalls.c and sysmem.c are newlib stubs, not project code.
+      - name: Host type-check of the STM32 sources
+        working-directory: BMS_Slave
+        run: |
+          for f in Core/Src/*.c; do
+            case "$f" in *syscalls.c|*sysmem.c) continue ;; esac
+            echo "  $f"
+            gcc -fsyntax-only -Wall -Wextra -std=c11 -DSTM32F103xB \
+              -ICore/Inc \
+              -IDrivers/STM32F1xx_HAL_Driver/Inc \
+              -IDrivers/CMSIS/Include \
+              -IDrivers/CMSIS/Device/ST/STM32F1xx/Include "$f"
+          done
+
+  stm32-firmware:
+    name: STM32F103 firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # arm-none-eabi-gcc is not part of the runner image. The release is
+      # pinned so the reported image size cannot move without an edit here.
+      - uses: carlosperate/arm-none-eabi-gcc-action@v1
+        with:
+          release: '13.2.Rel1'
+
+      - name: Build
+        working-directory: BMS_Slave
+        run: |
+          arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb -std=gnu11 -O0 -g3 \
+            -Wall -Wextra -ffunction-sections -fdata-sections \
+            -DUSE_HAL_DRIVER -DSTM32F103xB \
+            -ICore/Inc \
+            -IDrivers/STM32F1xx_HAL_Driver/Inc \
+            -IDrivers/STM32F1xx_HAL_Driver/Inc/Legacy \
+            -IDrivers/CMSIS/Device/ST/STM32F1xx/Include \
+            -IDrivers/CMSIS/Include \
+            -T STM32F103C8TX_FLASH.ld --specs=nosys.specs \
+            -Wl,--gc-sections -Wl,-Map=bms_slave.map \
+            Core/Src/*.c Drivers/STM32F1xx_HAL_Driver/Src/*.c \
+            Core/Startup/startup_stm32f103c8tx.s \
+            -o bms_slave.elf
+
+      - name: Size report
+        working-directory: BMS_Slave
+        run: arm-none-eabi-size bms_slave.elf
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bms_slave-elf
+          path: |
+            BMS_Slave/bms_slave.elf
+            BMS_Slave/bms_slave.map
+          retention-days: 14
+
+  esp32-firmware:
+    name: ESP32 firmware
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # The whole ~/.platformio tree, not just its .cache subdirectory:
+      # caching only the downloads still leaves PlatformIO unpacking and
+      # installing the Xtensa toolchain on every run, which is the slow part.
+      - name: Cache the PlatformIO toolchains
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.platformio
+            ~/.cache/pip
+          key: pio-${{ runner.os }}-${{ hashFiles('BMS_Master/platformio.ini') }}
+          restore-keys: |
+            pio-${{ runner.os }}-
+
+      - name: Install PlatformIO
+        run: pip install --upgrade platformio
+
+      - name: Build
+        working-directory: BMS_Master
+        run: pio run
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bms_master-firmware
+          path: BMS_Master/.pio/build/*/firmware.bin
+          retention-days: 14

@@ -15,3 +15,7 @@ logs/
 # STM32CubeIDE rewrites this on every build and its env-hash differs per
 # machine, so it is noise in every diff.
 BMS_Slave/.settings/language.settings.xml
+
+# Headless STM32 build output, produced by .github/workflows/ci.yml
+BMS_Slave/bms_slave.elf
+BMS_Slave/bms_slave.map
