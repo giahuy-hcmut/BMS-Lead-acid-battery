@@ -1,6 +1,8 @@
 Distributed BMS for a 60 V Lead-Acid EV
 =======================================
 
+[![CI](https://github.com/giahuy-hcmut/BMS-Lead-acid-battery/actions/workflows/ci.yml/badge.svg)](https://github.com/giahuy-hcmut/BMS-Lead-acid-battery/actions/workflows/ci.yml)
+
 Battery management system for a light four-wheel electric vehicle, built around a
 **distributed master–slave architecture**: one monitor board bolted to each battery,
 all reporting over a galvanically isolated CAN bus to a central controller that owns
@@ -17,7 +19,7 @@ for what was *not* proven.
 | **Battery monitor** | 5 × STM32F103C8T6, one per battery, galvanically isolated |
 | **Central controller** | ESP32 (dual-core, FreeRTOS) |
 | **Buses** | 2 × CAN 2.0A @ 500 kbit/s, electrically separate · Wi-Fi AP |
-| **Own code** | ≈6 200 lines of C / C++ (excludes vendor HAL) |
+| **Own code** | ≈8 100 lines of C / C++ (excludes vendor HAL) |
 
 ---
 
@@ -34,14 +36,14 @@ state of charge, and reports over CAN. A central controller collects all five, m
 pack current through a shunt, and opens the contactor when any safety condition fails.
 
 <p align="center">
-  <img src="docs/images/32-full-assembly.jpg" width="72%">
+  <img src="docs/images/32-full-assembly.jpg" width="55%">
 </p>
 
 _Figure 1: Complete battery management system — contactor unit (top left), central
 controller (top right), five battery monitors (bottom)_
 
 <p align="center">
-  <img src="docs/images/01-system-schematic.jpg" width="85%">
+  <img src="docs/images/01-system-schematic.jpg" width="75%">
 </p>
 
 _Figure 2: System block diagram — five battery monitors on the internal CAN bus, one
@@ -109,7 +111,7 @@ takes +5 V from the central controller. Voltage divider and temperature sensor s
 entirely inside the floating domain, so no conductive path crosses the barrier.
 
 <p align="center">
-  <img src="docs/images/02-system-wiring.jpg" width="85%">
+  <img src="docs/images/02-system-wiring.jpg" width="72%">
 </p>
 
 _Figure 3: System wiring — the isolation boundary runs through each monitor S_1…S_5.
@@ -135,6 +137,19 @@ III. Hardware design
 The divider ratio puts the 15.00 V over-voltage threshold at 3.24 V on a 3.3 V ADC —
 inside range, with the full scale only 0.27 V above the trip point.
 
+**Voltage chain.** 100 conversions are averaged (≈0.7 ms), converted to the pin
+voltage, inverted through the divider, then corrected by a **two-point calibration
+measured per board**:
+
+```
+V = K · V_computed + B            K = (V₂ − V₁) / (Vt₂ − Vt₁),  B = V₁ − K · Vt₁
+```
+
+`V₁`, `V₂` are multimeter readings at two levels, `Vt₁`, `Vt₂` what the board computed
+for them. The constants live in `BMS_ADC.h` behind `SLAVE_INDEX`, which is why the five
+boards are **not** interchangeable: that one macro selects both the CAN ID and this
+board's calibration pair.
+
 <p align="center">
   <img src="docs/images/03-monitor-block.jpg" width="32%">
 </p>
@@ -150,7 +165,7 @@ _Figure 5: Battery monitor wiring. PB1 reads the divider, PB7 the DS18B20, PB8/P
 cross the isolator to the transceiver_
 
 <p align="center">
-  <img src="docs/images/05-monitor-schematic.jpg" width="85%">
+  <img src="docs/images/05-monitor-schematic.jpg" width="65%">
 </p>
 
 _Figure 6: Battery monitor schematic — MCU, digital isolator, voltage sense,
@@ -177,13 +192,13 @@ The ESP32 has exactly one TWAI peripheral and the internal bus already uses it, 
 vehicle bus needs a second controller — hence the MCP2515 over SPI.
 
 <p align="center">
-  <img src="docs/images/08-controller-block.jpg" width="85%">
+  <img src="docs/images/08-controller-block.jpg" width="75%">
 </p>
 
 _Figure 9: Central controller block diagram_
 
 <p align="center">
-  <img src="docs/images/09-controller-wiring.jpg" width="85%">
+  <img src="docs/images/09-controller-wiring.jpg" width="70%">
 </p>
 
 _Figure 10: Central controller wiring — MCP2551 on IO35/IO32, INA219 on I²C IO21/IO22,
@@ -212,6 +227,38 @@ PGA ÷8 gives ±320 mV = **±427 A** with a 13.3 mA step. The over-current thres
 to fall inside the measurement range, and a narrower PGA setting would make
 over-current protection silently unreachable.
 
+Only the Shunt Voltage register (`0x01`, 10 µV/LSB) is read; the current is computed on
+the ESP32 rather than trusting the INA219 Current register:
+
+```
+V_avg = (Σ 8 samples − max − min) / 6        trimmed mean, 8 × 3 ms = 24 ms window
+I     = (V_avg − V_os) × 100 A / 75 mV       V_os = −17.5 µV, measured after soldering
+```
+
+`V_os` was measured **after** the shunt was soldered, so it includes the thermoelectric
+contribution of the joints — soldering moved the offset by 6 µV, which is how we know
+the joints are clean. Below **0.5 A** the reading is forced to exactly zero: that band
+is ≈21× the measured post-filter noise of 12.8 mA, so it cannot swallow a real signal.
+
+Every cycle also checks that the INA219 still ACKs on I²C. After **20 consecutive**
+failures the sensor counts as lost and the protection task opens the relay — the
+INA219 has no ALERT pin (the INA226 does), so this software check is the *only* layer
+that catches a dead current sensor.
+
+### 3.4 Temperature sensing
+
+The DS18B20 is wired with three conductors — 3.3 V, ground, and data on PB7 pulled up
+through 4.7 kΩ. One measurement is two 1-Wire transactions, each opening with a reset
+pulse and `SKIP ROM` (`0xCC`) because the bus holds a single sensor: `CONVERT T`
+(`0x44`), then later `READ SCRATCHPAD` (`0xBE`) and two bytes. Those two bytes are a
+**signed** 16-bit count of 1/16 °C; the CRC byte is not read.
+
+Bit slots are timed by polling TIM4. Reading a bit pulls the line low for 2 µs,
+releases, and samples at ≈5 µs — inside the sensor's 15 µs window, with ~8 µs of
+margin. That margin is deliberate: the delay loop is *not* interrupt-protected, and the
+CAN receive ISR alone is ≈4 µs and fires every 5 ms, so a tighter sample point would be
+corrupted by it.
+
 ---
 
 IV. Software design
@@ -223,7 +270,7 @@ Two electrically separate CAN networks, both 500 kbit/s. Every signal is
 `raw × gain + offset`, MSB first.
 
 <p align="center">
-  <img src="docs/images/13-can-topology.jpg" width="85%">
+  <img src="docs/images/13-can-topology.jpg" width="72%">
 </p>
 
 _Figure 14: CAN topology — internal multi-drop bus with 120 Ω at both ends; vehicle bus
@@ -259,7 +306,7 @@ _Figure 17: Timing of both CAN networks. Green = won arbitration, red = lost and
 waiting, grey = not yet due_
 
 <p align="center">
-  <img src="docs/images/17-monitor-task-timing.jpg" width="85%">
+  <img src="docs/images/17-monitor-task-timing.jpg" width="78%">
 </p>
 
 _Figure 18: Battery monitor task timing — temperature 1000 ms, voltage 50 ms, SOC 5 ms,
@@ -272,6 +319,10 @@ CAN receive interrupt 5 ms_
 _Figure 19: Central controller task timing. Core 1 runs the real-time work (CAN TX/RX
 priority 5, ingest and current priority 4, vehicle CAN priority 3); core 0 runs the web
 server at priority 2_
+
+The temperature task is **split-phase**: a conversion takes up to 750 ms, which is less
+than the 1000 ms task period, so each run collects the *previous* conversion and then
+starts the next one. Nothing ever blocks waiting for the sensor.
 
 ### 4.3 Data flow
 
@@ -295,6 +346,21 @@ _Figure 21: Central controller data flow. Every access to the shared store takes
 
 ### 4.4 Protection
 
+Voltage and temperature are judged **on the monitor that owns the battery**, not
+centrally: each STM32 sets its own fault bits, and the controller only ever sees the
+resulting status byte, which it reports as `HwErr:0x10X`. Pack-level conditions are
+judged by the controller.
+
+| Condition | Threshold | Judged by | Basis |
+|---|---|---|---|
+| Over-voltage | 15.00 V per battery | monitor | maximum charge voltage, EVX12200 datasheet |
+| Under-voltage | 10.50 V per battery, IR-compensated | monitor | end of discharge, 1.75 V/cell |
+| Over-temperature | 50 °C | monitor | datasheet discharge temperature limit |
+| Over-current | 100 A | controller | shunt rating, and equal to the design peak draw (4 × 25 A) |
+| Battery depleted | pack SOC < 20 % | controller | OCV 11.88 V; below this a lead-acid plate sulphates |
+| Node lost | 3 s without a frame | controller | three reporting periods |
+| Current sensor lost | 20 consecutive I²C NACKs | controller | the reading can no longer be trusted |
+
 <p align="center">
   <img src="docs/images/21-protection-flowchart.jpg" width="26%">
 </p>
@@ -303,8 +369,34 @@ _Figure 22: Protection task, 10 ms period. Any one unsafe condition opens the re
 **all** active reasons are recorded so the web UI can show the complete fault list rather
 than only the first one_
 
-The relay starts **open** and never closes on its own: the operator has to command it on
-from the web interface, and the safety conditions have to pass as well.
+The relay starts **open** and never closes on its own. Closing needs the operator to
+command it on from the web interface **and** the weakest battery to be at 30 % SOC or
+above — hysteresis against the 20 % trip, so the relay cannot chatter either side of the
+threshold. A pack SOC of *unknown*, which is what an offline monitor produces, blocks
+closing too; that is intentional.
+
+**Why under-voltage is compensated.** 10.50 V is a *resting* voltage. Under load the
+terminal sags by I·R₀ — 1.35 V at 100 A — so a battery resting at 11.85 V (≈17 % SOC and
+still perfectly usable) reads exactly 10.50 V and would trip for nothing. The monitor
+therefore compares against
+
+```
+V_uvp = V + I · R₀          R₀ = 13.5 mΩ,  I > 0 discharging
+```
+
+Three asymmetries, all deliberately biased toward tripping early rather than late:
+
+- compensation applies **only while the current sample is under 100 ms old**. A stale
+  current *raises* `V_uvp` and could mask a real under-voltage, which is the dangerous
+  direction; with no fresh current the raw reading is used, which only trips sooner.
+- the term is clamped at **2.03 V**, so one bad current reading cannot hide a genuine
+  fault.
+- R₀ is not temperature-corrected here and the polarisation term V_RC is not compensated
+  at all. In the cold the real R₀ is *larger*, so the correction is smaller than reality
+  and the trip comes early.
+
+Over-voltage uses the **raw** reading: 15.00 V is a limit on the terminal itself,
+whatever current the sag or rise comes from.
 
 ### 4.5 State of charge
 
@@ -314,11 +406,26 @@ battery.
 ```
 OCV(SOC) = 11.63 + 1.26 · SOC          Q = 72 000 A·s (20 Ah)
 R0 = 13.5 mΩ, temperature-corrected    R1 = 13.5 mΩ, C1 = 1850 F
+
+R0(T) = R0,nom · (1 + 0.01 · (25 − T))
 ```
 
 Multirate: *predict* integrates current every 5 ms against the `0x100` frame, *update*
 corrects against the voltage sample every 50 ms. If no `0x100` arrives for 100 ms the
 current is forced to zero rather than integrated stale.
+
+Three input guards, because the estimate is only as good as what it is fed:
+
+- a current magnitude above **250 A** is rejected outright — above the 230 A datasheet
+  maximum, so it is physically impossible and must be a corrupt frame
+- a voltage sample more than **3σ** from the predicted terminal voltage is rejected
+  (innovation gate)
+- a *discharge* current above **10 A** is zeroed in the measurement model when the
+  measured sag is below **30 %** of what R₀ predicts for it — a large current must sag
+  the terminal, so if it does not, the sensor is stuck or offset. Not applied to
+  regeneration: with V_RC
+  still decaying, that test misreads legitimate charging and caused SOC spikes at every
+  braking event in simulation.
 
 The pack SOC reported upward is the **minimum** of the five, and is reported as
 *unknown* rather than guessed whenever any monitor is offline.
@@ -420,6 +527,12 @@ The controller runs a Wi-Fi access point and serves the UI itself — HTTP for t
 Server-Sent Events for a one-way 500 ms data push, HTTP POST for operator commands. No
 external network needed.
 
+The JSON payload carries an array of five batteries (voltage, SOC, temperature, fault
+code, online state) plus pack-level fields: total voltage, pack current, pack SOC, relay
+state, monitor state, lock flag and the fault-reason list. The two operator commands do
+not touch hardware directly — they set two flags that the protection task and the CAN
+transmit task read at their own cadence.
+
 <p align="center">
   <img src="docs/images/31-web-dashboard.jpg" width="19%">
   <img src="docs/images/30-web-fault.jpg" width="36%">
@@ -473,6 +586,12 @@ Stated plainly, because a results table without them is not worth much.
 - **Bench only.** The system was never run on a vehicle.
 - **Current chain verified below 1 A.** The ±5 % figure is demonstrated at 0.92 A;
   accuracy across the full 0–100 A range is not established.
+- **Current sign not confirmed under load.** `kCurrentSign` follows the wiring but there
+  was no load on the bench to prove it. A wrong sign makes the over-current test
+  permanently false, so it is first on the start-up checklist: SOC must *fall* while
+  driving and the web current must read positive.
+- **Two batteries not yet calibrated.** Monitors 0–2 carry measured two-point constants;
+  `SLAVE_INDEX` 3 and 4 still hold the identity pair `K = 1.0, B = 0.0`.
 - **Two fault types physically injected** — under-voltage and lost node. Over-voltage,
   over-temperature and over-current are implemented and configured but were not
   triggered on hardware.
@@ -485,8 +604,10 @@ Stated plainly, because a results table without them is not worth much.
   redistributed.
 - **SOC error on a real battery is unknown.** No reference discharge was performed, so
   the model parameters remain datasheet and literature values.
-- **No headless build for the monitor firmware.** It builds under STM32CubeIDE only;
-  there is no CMake or Makefile, so it cannot be built in CI yet.
+- **Over-current trip has no headroom.** It is set at 100 A because that is the shunt's
+  rating, but 100 A is also the vehicle's design peak draw, so the trip point sits
+  exactly at normal full load. The 24 ms trimmed mean should absorb acceleration
+  transients; this has not been confirmed under a real load.
 - **Relay module under-rated.** Its contacts are rated 30 V DC while switching the
   contactor coil off the 60 V pack (≈0.2 A).
 
@@ -505,7 +626,9 @@ pio run -t upload && pio device monitor  # flash + serial
 
 **Battery monitor (STM32F103)** — STM32CubeIDE: import `BMS_Slave/`, build, flash over
 SWD. Each board is built with a different `SLAVE_INDEX` (0–4), which selects its CAN ID
-and its two-point voltage calibration constants.
+and its two-point voltage calibration constants, so the five images are not
+interchangeable. The same firmware also builds without an IDE — see
+[IX. Code quality](#ix-code-quality).
 
 **Unit tests and coverage** (Git Bash, needs `gcc` and `gcov`):
 
@@ -535,17 +658,25 @@ C++ (B1–B25) rule set, which is inspired by MISRA C and CERT C. The code is
 there is no deviation record, and the vendor HAL under `BMS_Slave/Drivers/` is
 excluded from the rules outright.
 
-What is enforced, and how each claim is checked:
+Every claim below is re-checked by [CI](.github/workflows/ci.yml) on each push and
+pull request, except the two rows marked as one-off audits:
 
 | Check | Tool | Result |
 |---|---|---|
-| File structure — header, guards, section banners | project template validator | **26 / 26** files pass |
-| Comment language, non-ASCII bytes in `BMS_Slave/Core` | grep | **0** |
-| MISRA C:2012 Rule 8.7, internal linkage | manual audit | 0 violations, 4 documented exceptions |
-| STM32 firmware links | `arm-none-eabi-gcc 14.2`, `-Wall -Wextra` | **0 warnings** |
-| STM32 sources type-check on the host | `gcc -fsyntax-only -Wall -Wextra` | **16 / 16** clean |
 | Kalman filter behaviour | Unity, against the exact file that is flashed | **20 / 20** pass |
-| ESP32 firmware links | PlatformIO, Arduino-ESP32 | **0 warnings** |
+| STM32 sources type-check on the host | `gcc -fsyntax-only -Wall -Wextra` | **16 / 16** clean |
+| STM32 firmware links | `arm-none-eabi-gcc 13.2`, `-Wall -Wextra` | **0 warnings** |
+| ESP32 firmware links | PlatformIO, platform and libraries pinned | **0 warnings** |
+| File structure — header, guards, section banners | project template validator (one-off) | **26 / 26** files pass |
+| MISRA C:2012 Rule 8.7, internal linkage | manual audit (one-off) | 0 violations, 4 documented exceptions |
+| Comment language, non-ASCII bytes in `BMS_Slave/Core` | grep | **0** |
+
+The three CI jobs are `host-checks` (unit tests + gcov + host type-check),
+`stm32-firmware` (full ARM link, uploads `.elf` and `.map`) and `esp32-firmware`
+(PlatformIO build, uploads `firmware.bin`). The ESP32 job pins
+`espressif32@6.11.0` and every library to an exact version — an unpinned platform
+once pulled 8.0.0 into CI, where the ESP-NOW send-callback signature had changed,
+and the build broke while the bench still compiled.
 
 Footprint, read from the linked images rather than estimated:
 
@@ -554,7 +685,7 @@ Footprint, read from the linked images rather than estimated:
 | STM32F103C8T6 battery monitor | 22 976 B of 65 536 (35 %) | 2 496 B of 20 480 (12 %) |
 | ESP32 central controller | 850 849 B of 1 310 720 (65 %) | 44 444 B of 327 680 (14 %) |
 
-The STM32 image can be reproduced without an IDE:
+The STM32 image can be reproduced without an IDE — this is the command CI runs:
 
 ```bash
 cd BMS_Slave
@@ -601,6 +732,7 @@ VCAN_RX_TEST/         Reference CAN decoder handed to the motor-controller team
 BENCH_INA219/         Bench characterisation rig for the current sensor
 Esp-now/              ESP-NOW handheld remote (legacy, not part of the BMS)
 docs/                 Project brief (Vietnamese) and figures
+.github/workflows/    CI — unit tests, host type-check, both firmware builds
 ```
 
 Documentation
