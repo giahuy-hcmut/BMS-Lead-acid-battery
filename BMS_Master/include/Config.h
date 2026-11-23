@@ -194,17 +194,30 @@ constexpr uint8_t kRelayOn  = HIGH;
 constexpr uint8_t kRelayOff = LOW;
 
 /** Over-current trip, A.
- * 50 A was the old figure, from when the vehicle was assumed to draw 50 A.
- * It really draws 4 BLDC motors x 25 A, about 100 A peak, so 50 A WOULD HAVE
- * OPENED THE RELAY DURING NORMAL ACCELERATION. 150 A is 1.5x the expected
- * peak and 65% of the 230 A maximum discharge current in the CSB EVX12200
- * datasheet: high enough not to trip for nothing, low enough to stay under
- * the battery limit.
- * TODO confirm against the motor controller current limit once known. */
-constexpr float kMaxDischargeCurrentA = 150.0f;
+ * 100 A is fixed by hardware, twice over: the shunt is rated 100 A / 75 mV,
+ * and the vehicle's own peak draw is 4 BLDC motors x 25 A = 100 A. Tripping
+ * any higher would mean protecting the pack with a sensor driven past its own
+ * rating, so the shunt sets the ceiling, not the 230 A datasheet maximum of
+ * the battery.
+ * The consequence is a trip point sitting AT the design peak with no
+ * headroom. What keeps that from nuisance-tripping on acceleration is
+ * Task_Current's trimmed mean: this test reads a 24 ms average with the
+ * highest and lowest of the 8 samples discarded, never an instantaneous one.
+ * (An earlier 50 A figure came from an assumed 50 A vehicle and WOULD have
+ * opened the relay during normal acceleration.) */
+constexpr float kMaxDischargeCurrentA = 100.0f;
 
-constexpr int kMinSocShutdownPct = 5;   /**< below this the relay opens      */
-constexpr int kRecoverySocPct    = 10;  /**< hysteresis for closing it again */
+/** Battery-depleted trip and the hysteresis for closing the relay again, in
+ * percent of pack SOC.
+ * 20 % is the floor for a lead-acid pack, not an arbitrary round number:
+ * OCV(0.20) = 11.63 + 1.26 x 0.20 = 11.88 V per battery, the deep-discharge
+ * boundary for the CSB EVX12200. The earlier 5 % / 10 % pair let the pack run
+ * far below that, and repeated deep discharge is what sulphates a lead-acid
+ * plate - a lithium pack would tolerate it, this one does not.
+ * Re-closing at 30 % (12.01 V) leaves a usable band instead of letting the
+ * relay chatter either side of the trip point. */
+constexpr int kMinSocShutdownPct = 20;  /**< below this the relay opens      */
+constexpr int kRecoverySocPct    = 30;  /**< hysteresis for closing it again */
 
 /* ======================================================================
  *  8. Vehicle CAN bus, MCP2515 over SPI
