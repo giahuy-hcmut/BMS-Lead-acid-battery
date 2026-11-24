@@ -11,7 +11,7 @@
  * sources writing the same SOC field would have fought each other.
  *
  * The filter is a TRIMMED mean, not a plain average, and the reason was
- * measured on the bench (Code/BENCH_INA219): while the SDA wire was pulled,
+ * measured on the bench (Code/tools/BENCH_INA219): while the SDA wire was pulled,
  * one I2C read returned -168.21 mV = -224 A, and it got THROUGH because the
  * probe() immediately before it still succeeded - probe and read are two
  * separate I2C transactions and the wire came out between them.

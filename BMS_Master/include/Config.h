@@ -130,7 +130,7 @@ constexpr uint32_t kWebUpdateIntervalMs = 500U;
  * outside the specified range (-56 mV at 75 A) but within the absolute
  * maximum of -0.3 V. State that limit in the report.
  *
- * Numbers MEASURED on the bench (Code/BENCH_INA219, 2026-08-12), not taken
+ * Numbers MEASURED on the bench (Code/tools/BENCH_INA219, 2026-08-12), not taken
  * from a datasheet:
  *   range   320 mV -> +/-427 A   (pinned at exactly 320.000 for 3.27 V diff)
  *   offset  -17.5 uV = -23.3 mA  -> 0.117 %/h of Coulomb drift on 20 Ah

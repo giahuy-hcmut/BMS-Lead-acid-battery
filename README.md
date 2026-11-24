@@ -696,10 +696,11 @@ BMS_Slave/            STM32F103 firmware — battery monitor
   UnitTest/             Unity tests, gcov coverage, offline simulation
 BMS_Master/           ESP32 firmware — central controller (PlatformIO)
   src, include          FreeRTOS tasks, protection logic, INA219, web server
-VCAN_RX_TEST/         Reference CAN decoder handed to the motor-controller team
-BENCH_INA219/         Bench characterisation rig for the current sensor
-Esp-now/              ESP-NOW handheld remote (legacy, not part of the BMS)
 hardware/             Altium source, fabrication data and schematics for both PCBs
+tools/                Firmware that is not the product
+  VCAN_RX_TEST/         Reference CAN decoder handed to the motor-controller team
+  BENCH_INA219/         Bench characterisation rig for the current sensor
+  Esp-now/              ESP-NOW handheld remote (legacy)
 docs/                 Project brief (Vietnamese) and figures
 .github/workflows/    CI — unit tests, host type-check, both firmware builds
 ```

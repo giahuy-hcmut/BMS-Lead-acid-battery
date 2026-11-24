@@ -632,7 +632,7 @@ nên RX thấy toàn bộ traffic trên bus.
 ### ✅ ĐÃ VERIFY BẰNG NODE NHẬN THẬT (2026-08-14)
 
 Dựng **node "xe" giả lập**: ESP32 thứ 2 + **MCP2551** (ESP32 có TWAI tích hợp nên
-chỉ cần transceiver). Nạp `Code/VCAN_RX_TEST/` → **nhận + giải mã đúng cả hai
+chỉ cần transceiver). Nạp `Code/tools/VCAN_RX_TEST/` → **nhận + giải mã đúng cả hai
 frame**. Byte thô kiểm chéo tay khớp 100%:
 
 ```
@@ -660,7 +660,7 @@ node nhận thật vừa chứng minh được vừa tạo ACK.
 
 ### 📦 File BÀN GIAO cho người điều khiển motor
 
-`VCAN_RX_TEST/include/BMS_VehicleCAN.h` — **decoder header-only**, đưa cho đồng
+`tools/VCAN_RX_TEST/include/BMS_VehicleCAN.h` — **decoder header-only**, đưa cho đồng
 đội (anh ta dùng ESP32 điều khiển driver BLDC qua CAN, đồng thời nhận gói BMS).
 
 - API nhận **`(id, data, len)` THÔ**, không buộc kiểu `twai_message_t` ⇒ dùng được
@@ -749,7 +749,7 @@ mọi thứ tiêu thụ điện từ pack lấy mass ở **điểm sao**. Chỉ 
 Còn thiếu: **precharge** (tụ DC-link của 4 bộ BLDC ⇒ dòng vào đỉnh hàn dính tiếp
 điểm) và **cầu chì HRC** ở cực dương, trước contactor.
 
-### Số ĐO THẬT — bench `Code/BENCH_INA219` (2026-08-12)
+### Số ĐO THẬT — bench `Code/tools/BENCH_INA219` (2026-08-12)
 
 Shunt **100A / 75mV = 0.75mΩ, class 0.5**. Module INA219 đã **gỡ `R100`** (0.1Ω
 trên bo — để lại thì nó song song 2 dây sense và rút 0.75A qua dây dành cho µV).
@@ -1052,11 +1052,11 @@ bất thường CAO trong khi các ID khác = 0. ~10 dòng, chưa làm.
 - `BMS_Master/src/Task_Current.cpp` + `include/Task_Current.h` — CHỈ đo dòng
   (Coulomb cũ đã gỡ). INA219 qua I2C, lọc **cắt biên** 8 mẫu × 3 ms, phát hiện
   mất I2C → `currentSensorFault`. Xem mục 6d.
-- `VCAN_RX_TEST/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời + MCP2551) làm node
+- `tools/VCAN_RX_TEST/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời + MCP2551) làm node
   "xe" nhận `0x200`/`0x201`. `include/BMS_VehicleCAN.h` = **FILE BÀN GIAO** cho
   người điều khiển motor (decoder header-only); `src/main.cpp` = app test;
   `README.md` = đấu dây + API + ví dụ FreeRTOS. Đã verify chạy thật 2026-08-14.
-- `BENCH_INA219/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời) đã kiểm chứng cảm
+- `tools/BENCH_INA219/` — **project PlatformIO ĐỘC LẬP** (ESP32 rời) đã kiểm chứng cảm
   biến trước khi sửa master. Sinh ra mọi con số trong mục 6d. Giữ lại: nó là nơi
   duy nhất đo được thang đo và gain một cách độc lập.
 - `BMS_Master/src/Task_Ingest.cpp` + `include/Task_Ingest.h` — NHẬP frame CAN
