@@ -1,0 +1,13 @@
+Output: NC Drill Files
+Type  : NC Drill
+From  : Project [Master_BMS.PrjPcb]
+   Generated File[Master-RoundHoles.TXT]
+   Generated File[Master-SlotHoles.TXT]
+   Generated File[Master.LDP]
+   Generated File[Master.DRR]
+
+
+Files Generated   : 4
+Documents Printed : 0
+
+Finished Output Generation At 8:00:40 AM On 9/3/2026
