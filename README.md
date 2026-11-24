@@ -549,35 +549,27 @@ reason for the filter.
 VII. Limitations
 ----------------
 
-Stated plainly, because a results table without them is not worth much.
+Stated plainly, because a results table without them is not worth much. All of it was
+measured on a bench; the system has never run on a vehicle.
 
-- **Bench only.** The system was never run on a vehicle.
-- **Current chain verified below 1 A.** The ±5 % figure is demonstrated at 0.92 A;
-  accuracy across the full 0–100 A range is not established.
-- **Current sign not confirmed under load.** `kCurrentSign` follows the wiring but there
-  was no load on the bench to prove it. A wrong sign makes the over-current test
-  permanently false, so it is first on the start-up checklist: SOC must *fall* while
-  driving and the web current must read positive.
-- **Two batteries not yet calibrated.** Monitors 0–2 carry measured two-point constants;
-  `SLAVE_INDEX` 3 and 4 still hold the identity pair `K = 1.0, B = 0.0`.
-- **Two fault types physically injected** — under-voltage and lost node. Over-voltage,
-  over-temperature and over-current are implemented and configured but were not
-  triggered on hardware.
-- **Trip latency is partial.** The 8.53 ms covers fault detected → command issued inside
-  the microcontroller. It excludes CAN transport delay, the 3 s node timeout, and the
-  contactor's mechanical travel.
-- **Isolation shown indirectly.** Five floating-ground monitors do share one bus
-  successfully, but no insulation resistance or withstand-voltage measurement was made.
-- **No cell balancing.** Batteries that drift apart trigger a trip; charge is not
-  redistributed.
-- **SOC error on a real battery is unknown.** No reference discharge was performed, so
-  the model parameters remain datasheet and literature values.
-- **Over-current trip has no headroom.** It is set at 100 A because that is the shunt's
-  rating, but 100 A is also the vehicle's design peak draw, so the trip point sits
-  exactly at normal full load. The 24 ms trimmed mean should absorb acceleration
-  transients; this has not been confirmed under a real load.
-- **Relay module under-rated.** Its contacts are rated 30 V DC while switching the
-  contactor coil off the 60 V pack (≈0.2 A).
+- **The current chain is proven only near zero.** The ±5 % figure comes from a 0.92 A
+  reading, and `kCurrentSign` follows the wiring rather than a measurement — a wrong
+  sign disables over-current protection silently, so it leads the start-up checklist.
+- **Two of the protections were injected on hardware**, under-voltage and lost node.
+  Over-voltage, over-temperature and over-current are implemented but never triggered.
+- **The 8.53 ms trip latency is partial**: fault detected → command issued, inside the
+  microcontroller. CAN transport, the 3 s node timeout and the contactor's mechanical
+  travel all sit outside it.
+- **Monitors 3 and 4 are uncalibrated**, still on `K = 1.0, B = 0.0`, and SOC error
+  against a real battery is unknown — no reference discharge was run, so the model
+  parameters remain datasheet and literature values.
+- **Isolation is shown only indirectly.** Five floating-ground monitors do share one
+  bus, but insulation resistance and withstand voltage were never measured.
+- **Three hardware compromises.** The over-current trip sits at 100 A, the shunt's
+  rating and also the vehicle's design peak, so it has no headroom above normal full
+  load. The relay module's contacts are rated 30 V DC while switching the contactor
+  coil off the 60 V pack (≈0.2 A). There is no cell balancing, so batteries that
+  drift apart trip the pack instead of being brought back together.
 
 ---
 
