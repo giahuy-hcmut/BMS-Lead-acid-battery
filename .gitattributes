@@ -33,3 +33,25 @@
 *.elf   binary
 *.hex   binary
 *.sal   binary
+
+# ---------------------------------------------------------------------------
+#  Altium Designer, hardware/
+# ---------------------------------------------------------------------------
+
+# Opaque binary containers. Diffing them is meaningless and end-of-line
+# conversion would corrupt them.
+*.SchDoc  binary
+*.PcbDoc  binary
+*.SchLib  binary
+*.PcbLib  binary
+*.IntLib  binary
+
+# The project and the output job are INI-like text, so they stay diffable.
+*.PrjPcb  text
+*.OutJob  text
+
+# Fabrication data is a byte-exact record of what a fab house received, so it
+# is stored exactly as exported: Gerber, Excellon and the reports alike. They
+# are text, but a rewritten line ending inside a frozen copy of a physical
+# object is a change, not a normalisation.
+hardware/*/fabrication/** binary

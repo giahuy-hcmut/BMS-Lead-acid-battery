@@ -19,3 +19,12 @@ BMS_Slave/.settings/language.settings.xml
 # Headless STM32 build output, produced by .github/workflows/ci.yml
 BMS_Slave/bms_slave.elf
 BMS_Slave/bms_slave.map
+
+# Altium working files, none of which belong in version control.
+# History/ alone is about 300 MB of automatic save archives across the two
+# projects, and it duplicates what Git is already for.
+History/
+Project Logs for */
+__Previews/
+*.PrjPcbStructure
+*.$$$Preview
