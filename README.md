@@ -65,38 +65,6 @@ centimetres long, one extra CAN node per extra battery, and per-battery diagnosi
 free. The cost is more components and more boards, which is acceptable at five
 batteries.
 
-```mermaid
-flowchart TB
-    subgraph PACK["Battery pack — 60 V"]
-        direction LR
-        B1[12 V] --- B2[12 V] --- B3[12 V] --- B4[12 V] --- B5[12 V]
-    end
-
-    subgraph SLAVES["5 × battery monitor — STM32F103C8T6"]
-        direction LR
-        S1["ADC + DS18B20<br/>Kalman SOC"]
-        S2["ADC + DS18B20<br/>Kalman SOC"]
-        S3["..."]
-    end
-
-    ISO{{"Galvanic isolation — ADuM1201, 2.5 kV<br/>each monitor sits on its own battery's negative terminal<br/>(0 / 12 / 24 / 36 / 48 V above pack ground)"}}
-
-    MASTER["Central controller — ESP32<br/>FreeRTOS, 2 cores<br/>protection logic · contactor · INA219"]
-
-    CUT["Contactor CZW200A<br/>+ 100 A / 75 mV shunt"]
-
-    VEH["Vehicle CAN<br/>via MCP2515 / SPI"]
-    WEB["Wi-Fi AP + web UI<br/>HTTP + Server-Sent Events"]
-
-    PACK --> SLAVES
-    SLAVES --- ISO
-    ISO -- "internal CAN 500 kbit/s" --> MASTER
-    MASTER --> CUT
-    CUT --> PACK
-    MASTER --> VEH
-    MASTER --> WEB
-```
-
 ### 2.2 The problem that creates, and the fix
 
 Each monitor's measurement ground is the **negative terminal of its own battery**, so
