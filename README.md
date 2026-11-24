@@ -699,6 +699,7 @@ BMS_Master/           ESP32 firmware — central controller (PlatformIO)
 VCAN_RX_TEST/         Reference CAN decoder handed to the motor-controller team
 BENCH_INA219/         Bench characterisation rig for the current sensor
 Esp-now/              ESP-NOW handheld remote (legacy, not part of the BMS)
+hardware/             Altium source, fabrication data and schematics for both PCBs
 docs/                 Project brief (Vietnamese) and figures
 .github/workflows/    CI — unit tests, host type-check, both firmware builds
 ```
